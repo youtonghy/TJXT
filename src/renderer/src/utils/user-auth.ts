@@ -12,6 +12,7 @@ export interface UserTokenData {
  * Create user auth utils with app config
  */
 import { getActiveBackend } from '@renderer/utils/user-center-backend'
+import { API_USER_AGENT } from '@renderer/utils/api-service'
 
 export const createUserAuthUtils = (appConfig?: IAppConfig) => {
   const utils = {
@@ -78,7 +79,8 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
         const response = await fetch(`${loginUrl}/api/v1/user/getSubscribe`, {
           headers: {
             'Authorization': token,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': API_USER_AGENT
           }
         })
 

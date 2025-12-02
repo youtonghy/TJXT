@@ -6,7 +6,7 @@
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' https: http:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data:; frame-src http://127.0.0.1:*; connect-src 'self' https: http: ws: wss:;"
+      content="default-src 'self' https: http:; script-src 'self' https://challenges.cloudflare.com https://www.recaptcha.net https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline'; img-src * data:; frame-src http://127.0.0.1:* https://challenges.cloudflare.com https://www.recaptcha.net https://www.google.com; connect-src 'self' https: http: ws: wss:;"
     />
   </head>
 

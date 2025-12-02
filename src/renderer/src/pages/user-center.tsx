@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
-import { IoRefreshOutline, IoCloseOutline, IoPersonOutline, IoLockClosedOutline, IoServerOutline, IoSpeedometer, IoCheckmarkCircle, IoEyeOutline, IoEyeOffOutline } from 'react-icons/io5'
+import { IoRefreshOutline, IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoCheckmarkCircle, IoPaperPlaneOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
 import { 
   getAllBackends, 
@@ -74,8 +74,11 @@ const UserCenter: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  
+  // Telegram Login State
+  const [telegramToken, setTelegramToken] = useState<string | null>(null)
+  const [telegramStatus, setTelegramStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'expired'>('idle')
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
   // 加载状态
   const [loading, setLoading] = useState<LoadingState>({
@@ -524,157 +527,180 @@ const UserCenter: React.FC = () => {
   }
 
   // 登录处理
-  const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setErrors(prev => ({ ...prev, userInfo: '请填写完整的邮箱和密码' }))
+  const handleTelegramLogin = async () => {
+    if (!email.trim()) {
+      setErrors(prev => ({ ...prev, userInfo: '请输入邮箱地址' }))
       return
     }
     
-    // 简单的邮箱格式验证
+    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
       setErrors(prev => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
       return
     }
-    
-    // 检查网络状态
+
     if (!navigator.onLine) {
       setErrors(prev => ({ ...prev, userInfo: '网络连接已断开，请检查网络后重试' }))
       return
     }
-    
+
     setLoading(prev => ({ ...prev, userInfo: true }))
     setErrors(prev => ({ ...prev, userInfo: null }))
-    
+    setTelegramStatus('idle')
+
     try {
-      // 参考login.html的API调用方式
-      const response = await fetch(`${loginUrl}/api/v1/passport/auth/login`, {
+      const response = await fetch(`${loginUrl}/api/v1/passport/auth/loginWithTelegram`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
-          email: email.trim(),
-          password: password
+        body: JSON.stringify({
+          email: email.trim()
         })
       })
-      
-      // 检查响应状态
-      if (!response.ok) {
-        let errorMessage = '登录失败'
-        
-        switch (response.status) {
-          case 400:
-            errorMessage = '请求参数错误，请检查邮箱和密码格式'
-            break
-          case 401:
-            errorMessage = '邮箱或密码错误，请重新输入'
-            break
-          case 403:
-            errorMessage = '账户已被禁用，请联系管理员'
-            break
-          case 429:
-            errorMessage = '登录尝试过于频繁，请稍后重试'
-            break
-          case 500:
-          case 502:
-          case 503:
-          case 504:
-            errorMessage = '服务器暂时无法访问，请稍后重试'
-            break
-          default:
-            errorMessage = `服务器错误 (${response.status})`
-        }
-        
-        throw new Error(errorMessage)
-      }
-      
+
       const data = await response.json()
       
-      if (data.data && data.data.auth_data) {
-        // 登录成功，使用token管理器保存token（7天有效期）
-        tokenManager.setToken(data.data.auth_data, 7)
-        
-        // 保存用户邮箱以便下次自动填入
-        localStorage.setItem('userEmail', email.trim())
-        
-        setIsLoggedIn(true)
-        setErrors(prev => ({ ...prev, userInfo: null }))
-        
-        // 更新网络状态
-        setNetworkStatus({
-          isOnline: true,
-          lastConnected: new Date()
-        })
-        
-        // 并行加载用户数据
-        try {
-          await Promise.all([
-            fetchUserInfo(),
-            fetchAnnouncements(),
-            refreshUserSubscription() // 刷新用户订阅链接
-          ])
+      if (!response.ok) {
+        throw new Error(data.message || '请求失败')
+      }
 
-          // 立即拉取订阅并切换为当前配置，避免仍显示初始内容
-          try {
-            const authUtils = createUserAuthUtils(appConfig)
-            const subUrl = await authUtils.getUserSubscriptionUrl()
-            if (subUrl) {
-              await addProfileItem({
-                id: 'user-subscription-meta',
-                type: 'remote',
-                name: '用户订阅 (Clash Meta)',
-                url: subUrl,
-                interval: 60 * 60, // 60分钟
-                override: [],
-                useProxy: false,
-                allowFixedInterval: false,
-                substore: false
-              })
-              await changeCurrentProfile('user-subscription-meta')
-            } else {
-              console.warn('未获取到订阅链接，跳过立即拉取')
-            }
-          } catch (e) {
-            console.warn('登录后立即拉取并切换订阅失败：', e)
-          }
-        } catch (dataError) {
-          // 即使数据加载失败，登录仍然成功
-          console.warn('Initial data loading failed:', dataError)
-        }
-        
+      if (data.data && data.data.token) {
+        setTelegramToken(data.data.token)
+        setTelegramStatus('pending')
+        // 保存用户邮箱
+        localStorage.setItem('userEmail', email.trim())
       } else {
-        // API返回成功但数据格式不正确
-        throw new Error(data.message || '登录响应数据格式错误')
+        throw new Error('未获取到登录凭证')
       }
-    } catch (error) {
-      let errorMessage = '登录失败，请稍后重试'
-      
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        // 网络连接错误
-        errorMessage = '无法连接到服务器，请检查网络连接和服务器地址'
-        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
-      } else if (!navigator.onLine) {
-        // 网络已断开
-        errorMessage = '网络连接已断开'
-        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
-      } else if (error instanceof Error) {
-        // 使用具体的错误信息
-        errorMessage = error.message
-      }
-      
-      setErrors(prev => ({ ...prev, userInfo: errorMessage }))
-      
-      // 记录错误用于调试
-      console.error('Login failed:', {
-        error,
-        email: email.trim(),
-        loginUrl,
-        timestamp: new Date().toISOString()
-      })
+    } catch (error: any) {
+       setErrors(prev => ({ ...prev, userInfo: error.message || '发起登录失败' }))
     } finally {
       setLoading(prev => ({ ...prev, userInfo: false }))
     }
+  }
+
+  const cancelTelegramLogin = () => {
+    setTelegramToken(null)
+    setTelegramStatus('idle')
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+  }
+
+  // Poll Status
+  useEffect(() => {
+    if (!telegramToken || telegramStatus !== 'pending') {
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+        }
+        return
+    }
+
+    const checkStatus = async () => {
+        try {
+            const response = await fetch(`${loginUrl}/api/v1/passport/auth/checkTelegramLogin?token=${telegramToken}`)
+            const data = await response.json()
+            
+            if (response.ok && data.data) {
+                const { status, verify_code } = data.data
+                
+                if (status === 'approved' && verify_code) {
+                    setTelegramStatus('approved')
+                    // Authenticate with verify code
+                    await performTokenLogin(verify_code)
+                } else if (status === 'rejected' || status === 'expired') {
+                    setTelegramStatus(status)
+                    setErrors(prev => ({ ...prev, userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期' }))
+                    setTelegramToken(null)
+                }
+            }
+        } catch (error) {
+            console.error('Polling error:', error)
+        }
+    }
+
+    pollingIntervalRef.current = setInterval(checkStatus, 2000) // Poll every 2 seconds
+
+    return () => {
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+        }
+    }
+  }, [telegramToken, telegramStatus, loginUrl])
+
+  // Token Login (Final Step)
+  const performTokenLogin = async (verifyCode: string) => {
+      setLoading(prev => ({ ...prev, userInfo: true }))
+      try {
+        const response = await fetch(`${loginUrl}/api/v1/passport/auth/token2Login?verify=${verifyCode}`)
+        
+        if (!response.ok) {
+           throw new Error('验证登录失败')
+        }
+
+        const data = await response.json()
+
+        if (data.data && data.data.auth_data) {
+             tokenManager.setToken(data.data.auth_data, 7)
+             setIsLoggedIn(true)
+             setErrors(prev => ({ ...prev, userInfo: null }))
+             setTelegramToken(null)
+             setTelegramStatus('idle')
+             
+             setNetworkStatus({
+                isOnline: true,
+                lastConnected: new Date()
+             })
+
+             // Load data
+             try {
+                await Promise.all([
+                    fetchUserInfo(),
+                    fetchAnnouncements(),
+                    refreshUserSubscription()
+                ])
+
+                 // Setup subscription profile
+                try {
+                    const authUtils = createUserAuthUtils(appConfig)
+                    const subUrl = await authUtils.getUserSubscriptionUrl()
+                    if (subUrl) {
+                    await addProfileItem({
+                        id: 'user-subscription-meta',
+                        type: 'remote',
+                        name: '用户订阅 (Clash Meta)',
+                        url: subUrl,
+                        interval: 60 * 60,
+                        override: [],
+                        useProxy: false,
+                        allowFixedInterval: false,
+                        substore: false
+                    })
+                    await changeCurrentProfile('user-subscription-meta')
+                    }
+                } catch (e) {
+                    console.warn('Profile setup failed:', e)
+                }
+
+             } catch (e) {
+                 console.warn('Initial data load failed:', e)
+             }
+
+        } else {
+            throw new Error('返回数据格式错误')
+        }
+
+      } catch (error: any) {
+          setErrors(prev => ({ ...prev, userInfo: error.message || '登录验证失败' }))
+          setTelegramStatus('idle')
+          setTelegramToken(null)
+      } finally {
+          setLoading(prev => ({ ...prev, userInfo: false }))
+      }
   }
 
   // 退出登录
@@ -684,7 +710,13 @@ const UserCenter: React.FC = () => {
     setUserInfo(null)
     setAnnouncements([])
     setEmail('')
-    setPassword('')
+    // Reset Telegram State
+    setTelegramToken(null)
+    setTelegramStatus('idle')
+    if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+    }
     
     // 重置自动测试标志
     hasStartedAutoTest.current = false
@@ -974,63 +1006,58 @@ rules:
                   size="lg"
                   variant="bordered"
                   radius="lg"
-                  isDisabled={loading.userInfo || !networkStatus.isOnline}
+                  isDisabled={loading.userInfo || !networkStatus.isOnline || telegramStatus === 'pending'}
                   startContent={<IoPersonOutline className="text-default-400" />}
                   classNames={{
                     input: "text-base",
                     inputWrapper: "h-12 shadow-sm"
                   }}
                   onKeyPress={(e) => {
-                    if (e.key === 'Enter' && password) {
-                      handleLogin()
+                    if (e.key === 'Enter') {
+                      handleTelegramLogin()
                     }
                   }}
                 />
-                
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="请输入密码"
-                  size="lg"
-                  variant="bordered"
-                  radius="lg"
-                  isDisabled={loading.userInfo || !networkStatus.isOnline}
-                  startContent={<IoLockClosedOutline className="text-default-400" />}
-                  endContent={
-                    <button
-                      type="button"
-                      className="text-default-400 hover:text-foreground transition"
-                      onClick={() => setShowPassword(v => !v)}
-                      aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                    >
-                      {showPassword ? <IoEyeOffOutline /> : <IoEyeOutline />}
-                    </button>
-                  }
-                  classNames={{
-                    input: "text-base",
-                    inputWrapper: "h-12 shadow-sm"
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && email && password) {
-                      handleLogin()
-                    }
-                  }}
-                />
+
+                {telegramStatus === 'pending' && (
+                    <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg animate-pulse">
+                        <div className="flex flex-col items-center gap-2 text-center">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <IoPaperPlaneOutline />
+                            </div>
+                            <h4 className="font-bold text-primary">请在 Telegram 确认登录</h4>
+                            <p className="text-xs text-default-500">已向您的 Telegram 发送登录请求，请确认...</p>
+                        </div>
+                    </div>
+                )}
               </div>
               
-              <Button
-                color="primary"
-                size="lg"
-                variant="solid"
-                radius="lg"
-                className="w-full h-12 text-base font-extrabold shadow-lg"
-                onPress={handleLogin}
-                isLoading={loading.userInfo}
-                disabled={!email || !password || !networkStatus.isOnline}
-              >
-                {loading.userInfo ? '登录中...' : t('userCenter.loginButton')}
-              </Button>
+              {telegramStatus === 'pending' ? (
+                  <Button
+                    color="danger"
+                    size="lg"
+                    variant="flat"
+                    radius="lg"
+                    className="w-full h-12 text-base font-medium"
+                    onPress={cancelTelegramLogin}
+                  >
+                    取消登录
+                  </Button>
+              ) : (
+                  <Button
+                    color="primary"
+                    size="lg"
+                    variant="solid"
+                    radius="lg"
+                    className="w-full h-12 text-base font-extrabold shadow-lg"
+                    onPress={handleTelegramLogin}
+                    isLoading={loading.userInfo}
+                    isDisabled={!email || !networkStatus.isOnline}
+                    startContent={!loading.userInfo && <IoPaperPlaneOutline />}
+                  >
+                    {loading.userInfo ? '请求中...' : 'Telegram 登录'}
+                  </Button>
+              )}
               
               {/* 服务器选择和测试（未登录也可选择，会话生效） */}
               {backends.length >= 1 && (

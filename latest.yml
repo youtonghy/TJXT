@@ -1,5 +1,12 @@
-version: 1.0.2
-changelog: "## 1.0.2
+version: 1.0.4
+changelog: "
+## 1.0.4
+
+  ### 新功能 (Feat)\r
+
+  - 添加Telegram登录\r
+
+## 1.0.2
 
   ### 新功能 (Feat)\r
 

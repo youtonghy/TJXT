@@ -5,6 +5,7 @@ import { Button, Card, CardBody, CardHeader, Divider, Input, Modal, ModalBody, M
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { getActiveBackend } from '@renderer/utils/user-center-backend'
+import { API_USER_AGENT } from '@renderer/utils/api-service'
 import dayjs from '@renderer/utils/dayjs'
 import { useNavigate } from 'react-router-dom'
 import { readLatestLogTail } from '@renderer/utils/ipc'
@@ -82,11 +83,19 @@ const Support: React.FC = () => {
     const token = auth.getToken()
     return {
       'Authorization': token || '',
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': API_USER_AGENT
     }
   }, [auth])
 
   const handleHttpError = async (res: Response): Promise<never> => {
+    // Handle 401 Unauthorized - clear token and redirect to login
+    if (res.status === 401) {
+      auth.clearToken()
+      navigate('/user-center', { replace: true })
+      throw new Error('登录已过期')
+    }
+
     let text = ''
     try {
       text = await res.text()
@@ -120,7 +129,10 @@ const Support: React.FC = () => {
     try {
       const res = await fetch(`${getBaseUrl()}/api/v1/user/ticket/fetch`, {
         method: 'GET',
-        headers: { 'Authorization': auth.getToken() || '' }
+        headers: {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
       })
       if (!res.ok) return handleHttpError(res)
       const data = await res.json()
@@ -144,7 +156,12 @@ const Support: React.FC = () => {
     setReplyText('')
     try {
       const url = `${getBaseUrl()}/api/v1/user/ticket/fetch?id=${encodeURIComponent(id)}`
-      const res = await fetch(url, { headers: { 'Authorization': auth.getToken() || '' } })
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      })
       if (!res.ok) return handleHttpError(res)
       const data = await res.json()
       setDetail(data.data as TicketDetailResponse)

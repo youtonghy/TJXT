@@ -200,22 +200,46 @@ async function migration(): Promise<void> {
     'lan-allowed-ips': lanAllowedIps,
     'lan-disallowed-ips': lanDisallowedIps
   } = await getControledMihomoConfig()
-  // add substore sider card
-  if (useSubStore && !siderOrder.includes('substore')) {
-    await patchAppConfig({ siderOrder: [...siderOrder, 'substore'] })
+  let nextSiderOrder = [...siderOrder]
+  let orderChanged = false
+
+  // add substore sider card when enabled
+  if (useSubStore && !nextSiderOrder.includes('substore')) {
+    nextSiderOrder = [...nextSiderOrder, 'substore']
+    orderChanged = true
   }
+
+  // ensure support card appears after user center by default
+  if (!nextSiderOrder.includes('support')) {
+    const userIdx = nextSiderOrder.indexOf('userCenter')
+    const insertIdx = userIdx !== -1 ? userIdx + 1 : 0
+    nextSiderOrder = [
+      ...nextSiderOrder.slice(0, insertIdx),
+      'support',
+      ...nextSiderOrder.slice(insertIdx)
+    ]
+    orderChanged = true
+  }
+
   // add store sider card at default third position (after support/userCenter)
-  if (!siderOrder.includes('store')) {
-    const newOrder = [...siderOrder]
-    const supportIdx = newOrder.indexOf('support')
-    const userIdx = newOrder.indexOf('userCenter')
+  if (!nextSiderOrder.includes('store')) {
+    const supportIdx = nextSiderOrder.indexOf('support')
+    const userIdx = nextSiderOrder.indexOf('userCenter')
     let insertIdx = 0
     if (supportIdx !== -1) insertIdx = supportIdx + 1
     else if (userIdx !== -1) insertIdx = userIdx + 1
     else insertIdx = 0
-    if (insertIdx < 0 || insertIdx > newOrder.length) insertIdx = newOrder.length
-    newOrder.splice(insertIdx, 0, 'store')
-    await patchAppConfig({ siderOrder: newOrder })
+    if (insertIdx < 0 || insertIdx > nextSiderOrder.length) insertIdx = nextSiderOrder.length
+    nextSiderOrder = [
+      ...nextSiderOrder.slice(0, insertIdx),
+      'store',
+      ...nextSiderOrder.slice(insertIdx)
+    ]
+    orderChanged = true
+  }
+
+  if (orderChanged) {
+    await patchAppConfig({ siderOrder: nextSiderOrder })
   }
   // add default skip auth prefix
   if (!skipAuthPrefixes) {

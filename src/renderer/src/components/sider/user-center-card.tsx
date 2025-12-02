@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { calcPercent, calcTraffic } from '@renderer/utils/calc'
 import dayjs from '@renderer/utils/dayjs'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
+import { API_USER_AGENT } from '@renderer/utils/api-service'
 
 interface Props {
   iconOnly?: boolean
@@ -62,8 +63,9 @@ const UserCenterCard: React.FC<Props> = (props) => {
         const loginUrl = authUtils.getLoginUrl()
         const resp = await fetch(`${loginUrl}/api/v1/user/getSubscribe`, {
           headers: {
-            Authorization: token,
-            'Content-Type': 'application/json'
+            'Authorization': token,
+            'Content-Type': 'application/json',
+            'User-Agent': API_USER_AGENT
           }
         })
         if (!resp.ok) return

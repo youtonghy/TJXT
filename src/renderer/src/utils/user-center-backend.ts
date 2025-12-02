@@ -2,6 +2,7 @@
  * User center backend management utilities
  */
 
+import { API_USER_AGENT } from './api-service'
 
 export interface BackendTestResult {
   id: string
@@ -17,16 +18,19 @@ export interface BackendTestResult {
  */
 export const testBackendLatency = async (backend: IUserCenterBackend): Promise<BackendTestResult> => {
   const startTime = Date.now()
-  
+
   try {
     const response = await fetch(`${backend.url}/api/v1/guest/comm/config`, {
       method: 'GET',
+      headers: {
+        'User-Agent': API_USER_AGENT
+      },
       signal: AbortSignal.timeout(10000) // 10秒超时
     })
-    
+
     const endTime = Date.now()
     const ping = endTime - startTime
-    
+
     return {
       id: backend.id,
       url: backend.url,
