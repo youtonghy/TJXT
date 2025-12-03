@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Select, SelectItem, Badge, Chip, Tooltip } from '@heroui/react'
+import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Select, SelectItem, Chip } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
@@ -33,7 +33,10 @@ interface Announcement {
   title: string
   content: string
   date: string
-  created_at?: string
+  imgUrl?: string
+  tags?: string[]
+  createdAt?: number
+  updatedAt?: number
   show?: number
 }
 
@@ -65,6 +68,7 @@ const UserCenter: React.FC = () => {
   // Track if user has manually picked a backend in this session
   const [userSelectedBackendId, setUserSelectedBackendId] = useState<string | null>(null)
   const SELECTED_BACKEND_KEY = 'userCenter.selectedBackendId'
+  const READ_ANNOUNCEMENTS_KEY = 'userCenter.readAnnouncementIds'
   
   // Use selected backend URL or fallback to active backend (selected > default)
   const loginUrl = selectedBackend?.url || getActiveBackend(appConfig).url
@@ -73,6 +77,20 @@ const UserCenter: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(READ_ANNOUNCEMENTS_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          return new Set(parsed.map((id) => String(id)))
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore read announcements from storage:', error)
+    }
+    return new Set()
+  })
   const [email, setEmail] = useState('')
   
   // Telegram Login State
@@ -317,28 +335,41 @@ const UserCenter: React.FC = () => {
       }
       
       if (notices && notices.length > 0) {
-        const filteredAnnouncements = notices
-          .filter((notice: any) => notice.show !== 0)
-          .map((notice: any) => ({
-            id: String(notice.id || Math.random().toString(36).slice(2)),
-            title: notice.title || '公告',
-            content: notice.content || '',
-            date: notice.created_at ? 
-              new Date(notice.created_at * 1000).toLocaleDateString('zh-CN') :
-              new Date().toLocaleDateString('zh-CN'),
-            show: notice.show
-          }))
-          .sort((a: any, b: any) => {
-            // 按日期降序排列（最新的在前）
-            const dateA = new Date(a.date).getTime()
-            const dateB = new Date(b.date).getTime()
+        const filteredAnnouncements: Announcement[] = notices
+          .filter((notice: any) => String(notice?.show ?? '1') === '1')
+          .map((notice: any) => {
+            const createdAtMs = notice?.created_at
+              ? Number(notice.created_at) * 1000
+              : notice?.createdAt
+              ? Number(notice.createdAt) * 1000
+              : notice?.updated_at
+              ? Number(notice.updated_at) * 1000
+              : Date.now()
+            const tags = Array.isArray(notice?.tags) ? notice.tags.map((tag: any) => String(tag)) : []
+            const imgUrl = notice?.img_url || notice?.image_url || notice?.image || ''
+
+            return {
+              id: String(notice.id || Math.random().toString(36).slice(2)),
+              title: notice.title || '公告',
+              content: notice.content || '',
+              date: new Date(createdAtMs).toLocaleString('zh-CN'),
+              imgUrl,
+              tags,
+              createdAt: createdAtMs,
+              updatedAt: notice?.updated_at ? Number(notice.updated_at) * 1000 : undefined,
+              show: notice.show
+            }
+          })
+          .sort((a, b) => {
+            const dateA = a.createdAt || 0
+            const dateB = b.createdAt || 0
             return dateB - dateA
           })
         setAnnouncements(filteredAnnouncements)
       } else {
         setAnnouncements([])
       }
-    } catch (error) {
+  } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '获取公告失败'
       setErrors(prev => ({ ...prev, announcements: errorMessage }))
       
@@ -348,6 +379,17 @@ const UserCenter: React.FC = () => {
       setLoading(prev => ({ ...prev, announcements: false }))
     }
   }, [apiRequest])
+
+  const markAnnouncementAsRead = useCallback((id: string) => {
+    if (!id) return
+    setReadAnnouncementIds(prev => {
+      if (prev.has(id)) return prev
+      const updated = new Set(prev)
+      updated.add(id)
+      localStorage.setItem(READ_ANNOUNCEMENTS_KEY, JSON.stringify(Array.from(updated)))
+      return updated
+    })
+  }, [READ_ANNOUNCEMENTS_KEY])
 
   // 统一刷新所有数据（仅在初始化时使用）
   const refreshAllData = useCallback(async (showLoading = false) => {
@@ -934,6 +976,7 @@ rules:
 
   const showAnnouncementModal = (announcement: Announcement) => {
     setSelectedAnnouncement(announcement)
+    markAnnouncementAsRead(announcement.id)
     setIsModalOpen(true)
   }
 
@@ -948,6 +991,10 @@ rules:
     const oneWeek = 7 * 24 * 60 * 60 * 1000
     return userInfo.traffic.expire < Date.now() + oneWeek
   }
+
+  const hasUnreadAnnouncements = announcements.some(
+    (announcement) => !readAnnouncementIds.has(announcement.id)
+  )
 
   if (!isLoggedIn) {
     return (
@@ -1204,6 +1251,9 @@ rules:
           <CardHeader className="flex justify-between">
             <h3 className="text-lg font-semibold">{t('userCenter.announcements')}</h3>
             <div className="flex items-center gap-2">
+              {hasUnreadAnnouncements && (
+                <span className="w-2 h-2 rounded-full bg-danger animate-pulse" aria-label="未读公告提醒"></span>
+              )}
               {loading.announcements && <Spinner size="sm" />}
             </div>
           </CardHeader>
@@ -1240,35 +1290,87 @@ rules:
               </div>
             ) : announcements.length > 0 ? (
               <div className="divide-y divide-default-200">
-                {announcements.map((announcement) => (
-                  <div
-                    key={announcement.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => showAnnouncementModal(announcement)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        showAnnouncementModal(announcement)
-                      }
-                    }}
-                    className="py-3 px-2 hover:bg-default-100 rounded cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-default-400">📢</span>
-                        <span className="font-medium text-foreground truncate">
-                          {announcement.title}
-                        </span>
+                {announcements.map((announcement) => {
+                  const isRead = readAnnouncementIds.has(announcement.id)
+                  const previewText = announcement.content
+                    ? announcement.content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+                    : ''
+                  const truncatedPreview = previewText.length > 140
+                    ? `${previewText.slice(0, 140)}...`
+                    : previewText
+
+                  return (
+                    <div
+                      key={announcement.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => showAnnouncementModal(announcement)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          showAnnouncementModal(announcement)
+                        }
+                      }}
+                      className="py-3 px-2 hover:bg-default-100 rounded cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="pt-1">
+                          <span className={`block w-2 h-2 rounded-full ${isRead ? 'opacity-0' : 'bg-danger animate-pulse'}`}></span>
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-default-400">📢</span>
+                              <span className="font-medium text-foreground truncate">
+                                {announcement.title}
+                              </span>
+                            </div>
+                            {announcement.date && (
+                              <span className="text-xs text-default-500 shrink-0">
+                                {announcement.date}
+                              </span>
+                            )}
+                          </div>
+
+                          {announcement.tags && announcement.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {announcement.tags.slice(0, 4).map((tag) => (
+                                <Chip 
+                                  key={`${announcement.id}-${tag}`} 
+                                  size="sm" 
+                                  variant="flat" 
+                                  color="primary" 
+                                  className="text-xs"
+                                >
+                                  {tag}
+                                </Chip>
+                              ))}
+                            </div>
+                          )}
+
+                          {truncatedPreview && (
+                            <p 
+                              className="text-sm text-default-500"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                            >
+                              {truncatedPreview}
+                            </p>
+                          )}
+                        </div>
+
+                        {announcement.imgUrl && (
+                          <div className="shrink-0 w-20 h-16 overflow-hidden rounded-md border border-default-200 bg-default-100">
+                            <img
+                              src={announcement.imgUrl}
+                              alt={announcement.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
                       </div>
-                      {announcement.date && (
-                        <span className="text-xs text-default-500 shrink-0">
-                          {announcement.date}
-                        </span>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="text-center text-default-500 py-8">
@@ -1509,7 +1611,32 @@ rules:
               </Button>
             </ModalHeader>
             <Divider />
-            <ModalBody className="py-6">
+            <ModalBody className="py-6 space-y-4">
+              {selectedAnnouncement?.tags && selectedAnnouncement.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedAnnouncement.tags.map((tag) => (
+                    <Chip
+                      key={`${selectedAnnouncement.id}-${tag}`}
+                      size="sm"
+                      variant="flat"
+                      color="primary"
+                    >
+                      {tag}
+                    </Chip>
+                  ))}
+                </div>
+              )}
+
+              {selectedAnnouncement?.imgUrl && (
+                <div className="overflow-hidden rounded-lg border border-default-200 bg-default-50">
+                  <img
+                    src={selectedAnnouncement.imgUrl}
+                    alt={selectedAnnouncement.title}
+                    className="w-full max-h-80 object-contain"
+                  />
+                </div>
+              )}
+
               <div className="prose max-w-none">
                 <div 
                   className="whitespace-pre-wrap leading-relaxed text-foreground"
