@@ -1,6 +1,6 @@
 {
   "name": "TJXT",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "description": "A TJXT Cilent",
   "main": "./out/main/index.js",
   "author": "Tokisantike Network",

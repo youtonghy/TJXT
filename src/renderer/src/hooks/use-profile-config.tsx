@@ -70,7 +70,9 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
       id: USER_SUBSCRIPTION_ID,
       type: 'remote',
       name: '用户订阅 (Clash Meta)',
-      url: isLoggedIn && userSubscriptionUrl ? userSubscriptionUrl : 'https://example.com/empty-subscription', // 空白占位URL
+      url: isLoggedIn
+        ? userSubscriptionUrl || 'https://example.com/loading-subscription'
+        : 'https://example.com/empty-subscription', // 空白占位URL
       interval: 60 * 60, // 60分钟更新一次 (3600秒)
       updated: Date.now(),
       override: [],
@@ -120,6 +122,16 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   }
 
   const addProfileItem = async (item: Partial<IProfileItem>): Promise<void> => {
+    // If attempting to add/refresh the user subscription while it's in loading state,
+    // trigger a subscription URL refresh instead.
+    if (
+      item.id === 'user-subscription-meta' &&
+      item.url === 'https://example.com/loading-subscription'
+    ) {
+      await refreshUserSubscription()
+      return
+    }
+
     try {
       await add(item)
     } catch (e) {

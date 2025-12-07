@@ -83,8 +83,8 @@ const ProfileItem: React.FC<Props> = (props) => {
     
     const list = []
 
-    // Only add edit options if it's not an empty user subscription
-    if (!isEmptyUserSubscription) {
+    // Only add edit options if it's not an empty user subscription AND not user subscription
+    if (!isEmptyUserSubscription && !isUserSubscription) {
       list.push(
         {
           key: 'edit-info',
@@ -273,31 +273,33 @@ const ProfileItem: React.FC<Props> = (props) => {
                   </Tooltip>
                 )}
 
-                <Dropdown
-                  isOpen={dropdownOpen}
-                  onOpenChange={setDropdownOpen}
-                >
-                  <DropdownTrigger>
-                    <Button isIconOnly size="sm" variant="light" color="default">
-                      <IoMdMore
-                        color="default"
-                        className={`text-[24px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
-                      />
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu onAction={onMenuAction}>
-                    {menuItems.map((item) => (
-                      <DropdownItem
-                        showDivider={item.showDivider}
-                        key={item.key}
-                        color={item.color}
-                        className={item.className}
-                      >
-                        {item.label}
-                      </DropdownItem>
-                    ))}
-                  </DropdownMenu>
-                </Dropdown>
+                {menuItems.length > 0 && (
+                  <Dropdown
+                    isOpen={dropdownOpen}
+                    onOpenChange={setDropdownOpen}
+                  >
+                    <DropdownTrigger>
+                      <Button isIconOnly size="sm" variant="light" color="default">
+                        <IoMdMore
+                          color="default"
+                          className={`text-[24px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
+                        />
+                      </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu onAction={onMenuAction}>
+                      {menuItems.map((item) => (
+                        <DropdownItem
+                          showDivider={item.showDivider}
+                          key={item.key}
+                          color={item.color}
+                          className={item.className}
+                        >
+                          {item.label}
+                        </DropdownItem>
+                      ))}
+                    </DropdownMenu>
+                  </Dropdown>
+                )}
               </div>
             </div>
             {info.type === 'remote' && extra && (

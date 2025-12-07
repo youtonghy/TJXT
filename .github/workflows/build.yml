@@ -328,38 +328,3 @@ jobs:
           body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  updater:
-    needs: [windows, macos, windows7, macos10]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        run: npm install -g pnpm
-      - name: Normalize Version
-        shell: pwsh
-        run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
-      - name: Install Dependencies
-        run: pnpm install
-      - name: Telegram Notification
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: pnpm telegram
-      - name: Generate latest.yml
-        run: pnpm updater
-      - name: Publish Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: v${{ env.VERSION }}
-          files: latest.yml
-          body_path: changelog.md
-          token: ${{ secrets.GITHUB_TOKEN }}
