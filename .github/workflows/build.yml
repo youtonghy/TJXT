@@ -1,11 +1,6 @@
 name: Build
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release Version'
-        required: false
-        default: ''
 
 permissions: write-all
 
@@ -24,17 +19,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup pnpm
         run: npm install -g pnpm
-      - name: Normalize Version
+      - name: Read Version (package.json)
         shell: pwsh
         run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
+          $version = node -p "require('./package.json').version"
+          $version = $version.Trim() -replace '^v+', ''
+          if (-not $version) { throw "package.json version is empty" }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
       - name: Install Dependencies
         env:
           npm_config_arch: ${{ matrix.arch }}
@@ -69,12 +60,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
+          body: ""
+          generate_release_notes: false
           files: |
             dist/*.sha256
             dist/*setup.exe
             dist/*portable.7z
-          body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
   windows7:
@@ -90,17 +83,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup pnpm
         run: npm install -g pnpm
-      - name: Normalize Version
+      - name: Read Version (package.json)
         shell: pwsh
         run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
+          $version = node -p "require('./package.json').version"
+          $version = $version.Trim() -replace '^v+', ''
+          if (-not $version) { throw "package.json version is empty" }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
       - name: Install Dependencies
         env:
           npm_config_arch: ${{ matrix.arch }}
@@ -137,12 +126,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
+          body: ""
+          generate_release_notes: false
           files: |
             dist/*.sha256
             dist/*setup.exe
             dist/*portable.7z
-          body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
   linux:
@@ -158,17 +149,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup pnpm
         run: npm install -g pnpm
-      - name: Normalize Version
+      - name: Read Version (package.json)
         shell: pwsh
         run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
+          $version = node -p "require('./package.json').version"
+          $version = $version.Trim() -replace '^v+', ''
+          if (-not $version) { throw "package.json version is empty" }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
       - name: Install Dependencies
         env:
           npm_config_arch: ${{ matrix.arch }}
@@ -198,12 +185,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
+          body: ""
+          generate_release_notes: false
           files: |
             dist/*.sha256
             dist/*.deb
             dist/*.rpm
-          body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
   macos:
@@ -219,17 +208,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup pnpm
         run: npm install -g pnpm
-      - name: Normalize Version
+      - name: Read Version (package.json)
         shell: pwsh
         run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
+          $version = node -p "require('./package.json').version"
+          $version = $version.Trim() -replace '^v+', ''
+          if (-not $version) { throw "package.json version is empty" }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
       - name: Install Dependencies
         env:
           npm_config_arch: ${{ matrix.arch }}
@@ -259,11 +244,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
+          body: ""
+          generate_release_notes: false
           files: |
             dist/*.sha256
             dist/*.pkg
-          body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
   macos10:
@@ -279,17 +266,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup pnpm
         run: npm install -g pnpm
-      - name: Normalize Version
+      - name: Read Version (package.json)
         shell: pwsh
         run: |
-          $version = '${{ inputs.version }}'
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
-          $version = $version -replace '^v+', ''
-          if (-not $version) { $version = "0.0.${{ github.run_number }}" }
+          $version = node -p "require('./package.json').version"
+          $version = $version.Trim() -replace '^v+', ''
+          if (-not $version) { throw "package.json version is empty" }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Set Version
-        shell: pwsh
-        run: npm version $env:VERSION --no-git-tag-version
       - name: Install Dependencies
         env:
           npm_config_arch: ${{ matrix.arch }}
@@ -321,10 +304,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
+          body: ""
+          generate_release_notes: false
           files: |
             dist/*.sha256
             dist/*.pkg
-          body_path: changelog.md
           token: ${{ secrets.GITHUB_TOKEN }}
-
