@@ -3,6 +3,75 @@
  */
 
 import { API_USER_AGENT } from './api-service'
+import backendSeedsRaw from '@renderer/config/user-center-backends.json'
+
+type BackendSeed = {
+  id: string
+  name: string
+  url: string
+  isDefault?: boolean
+  apiVersion?: string
+}
+
+const normalizeApiVersion = (value?: string): 'v1' | 'v3' => {
+  return value === 'v1' ? 'v1' : 'v3'
+}
+
+const normalizeBackendUrl = (value?: string): string => {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/u, '')
+  }
+  return `https://${trimmed.replace(/^\/+/, '')}`.replace(/\/+$/u, '')
+}
+
+const getBackendSeeds = (): BackendSeed[] => {
+  if (!Array.isArray(backendSeedsRaw)) return []
+  return backendSeedsRaw.filter((item): item is BackendSeed => {
+    return Boolean(item)
+      && typeof item.id === 'string'
+      && typeof item.name === 'string'
+      && typeof item.url === 'string'
+  })
+}
+
+const mergeBackendsWithSeeds = (existing: IUserCenterBackend[] = []): IUserCenterBackend[] => {
+  const seeds = getBackendSeeds()
+  if (seeds.length === 0) return existing
+
+  const existingById = new Map(existing.map((backend) => [backend.id, backend]))
+  const merged = seeds.map((seed) => {
+    const stored = existingById.get(seed.id)
+    return {
+      id: seed.id,
+      name: seed.name,
+      url: normalizeBackendUrl(seed.url || stored?.url),
+      apiVersion: normalizeApiVersion(seed.apiVersion ?? stored?.apiVersion),
+      isDefault: stored?.isDefault ?? seed.isDefault ?? false,
+      lastPing: stored?.lastPing,
+      lastTest: stored?.lastTest,
+      isActive: stored?.isActive
+    } as IUserCenterBackend
+  })
+
+  if (!merged.some((backend) => backend.isDefault) && merged.length > 0) {
+    merged[0].isDefault = true
+  }
+
+  return merged
+}
+
+export const getBackendApiPath = (backend?: IUserCenterBackend): string => {
+  return `/api/${normalizeApiVersion(backend?.apiVersion)}`
+}
+
+export const getBackendApiBaseUrl = (backend?: IUserCenterBackend): string => {
+  const baseUrl = normalizeBackendUrl(backend?.url)
+  if (!baseUrl) return ''
+  return `${baseUrl}${getBackendApiPath(backend)}`
+}
 
 export interface BackendTestResult {
   id: string
@@ -18,9 +87,10 @@ export interface BackendTestResult {
  */
 export const testBackendLatency = async (backend: IUserCenterBackend): Promise<BackendTestResult> => {
   const startTime = Date.now()
+  const apiBaseUrl = getBackendApiBaseUrl(backend)
 
   try {
-    const response = await fetch(`${backend.url}/api/v1/guest/comm/config`, {
+    const response = await fetch(`${apiBaseUrl}/guest/comm/config`, {
       method: 'GET',
       headers: {
         'User-Agent': API_USER_AGENT
@@ -63,24 +133,23 @@ export const testAllBackendsLatency = async (backends: IUserCenterBackend[]): Pr
  * Get default backend from configuration
  */
 export const getDefaultBackend = (appConfig?: IAppConfig): IUserCenterBackend => {
-  const backends = appConfig?.userCenterBackends || []
-  
+  const backends = getAllBackends(appConfig)
+
   // Find explicitly marked default backend
   const defaultBackend = backends.find(backend => backend.isDefault)
   if (defaultBackend) {
     return defaultBackend
   }
-  
+
   // Fall back to first backend
   if (backends.length > 0) {
     return backends[0]
   }
-  
-  // Fall back to default URL (no legacy field)
+
   return {
     id: 'default',
-    name: '默认后端',
-    url: 'https://vpn.200461.xyz',
+    name: 'Default Backend',
+    url: '',
     isDefault: true
   }
 }
@@ -101,22 +170,16 @@ export const getActiveBackend = (appConfig?: IAppConfig): IUserCenterBackend => 
   return getDefaultBackend(appConfig)
 }
 
+export const getActiveBackendApiBaseUrl = (appConfig?: IAppConfig): string => {
+  return getBackendApiBaseUrl(getActiveBackend(appConfig))
+}
+
 /**
  * Get all backends with fallback to legacy configuration
  */
 export const getAllBackends = (appConfig?: IAppConfig): IUserCenterBackend[] => {
   const backends = appConfig?.userCenterBackends || []
-  
-  if (backends.length > 0) {
-    return backends
-  }
-  
-  // Fall back to predefined three servers
-  return [
-    { id: 'default', name: '默认后端', url: 'https://vpn.200461.xyz', isDefault: true },
-    { id: 'mainland', name: '大陆后端', url: 'https://ppb.200461.xyz', isDefault: false },
-    { id: 'backup', name: '备用后端', url: 'https://[2a14:67c1:a072:1::3d]:59847', isDefault: false }
-  ]
+  return mergeBackendsWithSeeds(backends)
 }
 
 /**
@@ -126,12 +189,18 @@ export const updateBackends = async (
   newBackends: IUserCenterBackend[],
   patchAppConfig: (config: Partial<IAppConfig>) => Promise<void>
 ): Promise<void> => {
+  const normalized = newBackends.map((backend) => ({
+    ...backend,
+    url: normalizeBackendUrl(backend.url),
+    apiVersion: normalizeApiVersion(backend.apiVersion)
+  }))
+
   // Ensure at least one backend is marked as default
-  if (!newBackends.some(backend => backend.isDefault) && newBackends.length > 0) {
-    newBackends[0].isDefault = true
+  if (!normalized.some(backend => backend.isDefault) && normalized.length > 0) {
+    normalized[0].isDefault = true
   }
-  
-  await patchAppConfig({ userCenterBackends: newBackends })
+
+  await patchAppConfig({ userCenterBackends: normalized })
 }
 
 /**
@@ -225,17 +294,18 @@ export const updateBackendPingResults = async (
  * Find backend with lowest ping value
  */
 export const findOptimalBackend = (backends: IUserCenterBackend[]): IUserCenterBackend | null => {
-  const backendsWithPing = backends.filter(backend => backend.lastPing && backend.isActive)
+  const backendsWithPing = backends.filter(
+    (backend) => typeof backend.lastPing === 'number' && backend.isActive
+  )
   
   if (backendsWithPing.length === 0) {
     return null
   }
   
   return backendsWithPing.reduce((optimal, current) => {
-    if (!optimal.lastPing || !current.lastPing) {
-      return optimal.lastPing ? optimal : current
-    }
-    return current.lastPing < optimal.lastPing ? current : optimal
+    const optimalPing = optimal.lastPing as number
+    const currentPing = current.lastPing as number
+    return currentPing < optimalPing ? current : optimal
   })
 }
 
@@ -247,67 +317,8 @@ export const initializeBackends = async (
   appConfig?: IAppConfig
 ): Promise<void> => {
   const existingBackends = appConfig?.userCenterBackends || []
-  
-  // Check if we need to add predefined servers
-  const hasMainlandServer = existingBackends.some(backend => backend.id === 'mainland')
-  const hasBackupServer = existingBackends.some(backend => backend.id === 'backup')
-  
-  // If no backends exist, create default configuration
-  if (existingBackends.length === 0) {
-    const defaultBackends: IUserCenterBackend[] = [
-      {
-        id: 'default',
-        name: '默认后端',
-        url: 'https://vpn.200461.xyz',
-        isDefault: true
-      },
-      {
-        id: 'mainland',
-        name: '大陆后端',
-        url: 'https://ppb.200461.xyz',
-        isDefault: false
-      },
-      {
-        id: 'backup',
-        name: '备用后端',
-        url: 'https://[2a14:67c1:a072:1::3d]:59847',
-        isDefault: false
-      }
-    ]
-    
-    await updateBackends(defaultBackends, patchAppConfig)
-  } 
-  // If backends exist, enforce only the three predefined servers and remove others (e.g., 'panel')
-  else {
-    const allowed = new Map<string, { name: string; url: string }>([
-      ['default', { name: '默认后端', url: 'https://vpn.200461.xyz' }],
-      ['mainland', { name: '大陆后端', url: 'https://ppb.200461.xyz' }],
-      ['backup', { name: '备用后端', url: 'https://[2a14:67c1:a072:1::3d]:59847' }]
-    ])
+  const merged = mergeBackendsWithSeeds(existingBackends)
+  if (merged.length === 0) return
 
-    // Preserve which of the allowed ones was default if any
-    const preservedDefault = existingBackends.find(
-      b => allowed.has(b.id) && b.isDefault
-    )?.id || 'default'
-
-    // Build target list in fixed order, preserving runtime metrics
-    const metricsById = new Map(existingBackends
-      .filter(b => allowed.has(b.id))
-      .map(b => [b.id, { lastPing: b.lastPing, lastTest: b.lastTest, isActive: b.isActive } as Partial<IUserCenterBackend>]))
-
-    const targetBackends: IUserCenterBackend[] = []
-    for (const id of ['default', 'mainland', 'backup']) {
-      const meta = allowed.get(id)!
-      const metrics = metricsById.get(id) || {}
-      targetBackends.push({
-        id,
-        name: meta.name,
-        url: meta.url,
-        isDefault: id === preservedDefault,
-        ...metrics
-      } as IUserCenterBackend)
-    }
-
-    await updateBackends(targetBackends, patchAppConfig)
-  }
+  await updateBackends(merged, patchAppConfig)
 }

@@ -13,6 +13,7 @@
   - [Server 服务端模块](#server-服务端模块)
 - [API V2](#api-v2)
   - [Server 服务器配置](#server-服务器配置)
+- [API V3](#api-v3)
 
 ---
 
@@ -22,6 +23,7 @@
 ```
 /api/v1/...
 /api/v2/...
+/api/v3/...
 ```
 
 ### 认证方式
@@ -61,6 +63,16 @@ HTTP 状态码说明：
 - `500` - 服务器错误
 
 ---
+
+# API V3
+
+`/api/v3` 与 `/api/v1` 保持完全一致的业务行为（内部直接复用 V1 控制器），但会尽量避免把参数放在 URL 路径中；需要传参时统一放到请求参数里（query/form/json 均可）。
+
+使用方式：
+- 绝大多数接口：把 `/api/v1/...` 直接替换为 `/api/v3/...`，其余请求保持不变
+- 仅以下 2 个接口在 V3 下改变了“路径传参”的形式：
+  - V1：`ANY /api/v1/server/{class}/{action}` → V3：`ANY /api/v3/server`，通过请求参数传递 `class`、`action`
+  - V1：`GET|POST /api/v1/guest/payment/notify/{method}/{uuid}` → V3：`GET|POST /api/v3/guest/payment/notify`，通过请求参数传递 `method`、`uuid`
 
 # API V1
 
@@ -232,6 +244,128 @@ HTTP 状态码说明：
     "status": "pending|approved|rejected|expired",
     "verify_code": "验证码（approved 时返回）",
     "redirect": "跳转路径"
+  }
+}
+```
+
+---
+
+### 第三方应用跳转登录
+
+用途：第三方应用发起授权登录，用户在浏览器中登录并授权后跳转回应用并携带 access token。应用名称可在 `app/Http/Controllers/V1/Admin/UserController.php` 中调整。
+
+**流程说明：**
+1. 应用调用初始化接口获取授权页面 URL
+2. 浏览器打开授权页面 URL
+3. 用户登录后点击授权或拒绝
+4. 系统重定向到 `redirect_uri` 并附带 `access_token` 或 `error`
+
+**POST** `/api/v1/passport/auth/thirdPartyLogin/init`
+
+用途：创建第三方登录请求并返回授权页面 URL
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| redirect_uri | string | 是 | 应用回调地址（支持自定义 Scheme 或 https） |
+| state | string | 否 | 应用自定义状态参数 |
+
+**响应：**
+```json
+{
+  "data": {
+    "token": "请求 Token",
+    "url": "授权页面 URL",
+    "expires_in": 300,
+    "app_name": "Third-Party App"
+  }
+}
+```
+
+---
+
+**GET** `/api/v1/passport/auth/thirdPartyLogin`
+
+用途：浏览器打开授权页面
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| token | string | 是 | 请求 Token |
+
+**响应：**
+- 返回授权 HTML 页面
+
+---
+
+**POST** `/api/v1/passport/auth/thirdPartyLogin/approve`
+
+用途：授权登录并生成 access token
+
+**认证：** 需要 `authorization` Header（用户已登录）
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| token | string | 是 | 请求 Token |
+
+**响应：**
+```json
+{
+  "data": {
+    "redirect_url": "应用回调 URL（包含 access_token）",
+    "access_token": "认证数据",
+    "token_type": "bearer"
+  }
+}
+```
+
+---
+
+**POST** `/api/v1/passport/auth/thirdPartyLogin/reject`
+
+用途：拒绝登录请求
+
+**认证：** 需要 `authorization` Header（用户已登录）
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| token | string | 是 | 请求 Token |
+
+**响应：**
+```json
+{
+  "data": {
+    "redirect_url": "应用回调 URL（包含 error=access_denied）"
+  }
+}
+```
+
+**回调参数说明：**
+- 授权成功：`access_token`、`token_type`、`state`
+- 授权拒绝：`error=access_denied`、`state`
+
+---
+
+### 2FA 登录验证
+
+**POST** `/api/v1/passport/auth/login2FA`
+
+用途：完成 2FA 验证（TOTP 等）
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| token | string | 是 | 登录时返回的临时 Token |
+| code | string | 是 | 2FA 验证码 |
+
+**响应：**
+```json
+{
+  "data": {
+    "token": "加密的认证数据",
+    "auth_data": "认证数据"
   }
 }
 ```
@@ -526,6 +660,59 @@ HTTP 状态码说明：
 ```json
 {
   "data": "新的订阅 URL"
+}
+```
+
+---
+
+### 开启 TOTP
+
+**POST** `/api/v1/user/enable2FA`
+
+用途：初始化 TOTP 设置，获取密钥
+
+**响应：**
+```json
+{
+  "data": {
+    "secret": "密钥字符串",
+    "otpauth": "otpauth://totp/..."
+  }
+}
+```
+
+---
+
+### 验证并启用 TOTP
+
+**POST** `/api/v1/user/verify2FA`
+
+用途：验证 TOTP 代码并正式启用 2FA
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| code | string | 是 | 验证码 |
+
+**响应：**
+```json
+{
+  "data": true
+}
+```
+
+---
+
+### 关闭 TOTP
+
+**POST** `/api/v1/user/disable2FA`
+
+用途：关闭 2FA
+
+**响应：**
+```json
+{
+  "data": true
 }
 ```
 

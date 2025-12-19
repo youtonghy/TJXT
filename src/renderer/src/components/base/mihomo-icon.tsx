@@ -1,5 +1,5 @@
 import { GenIcon } from 'react-icons'
-function MihomoIcon(props): JSX.Element {
+function MihomoIcon(props) {
   return GenIcon({
     tag: 'svg',
     attr: { viewBox: '0 0 76.14 72.14' },

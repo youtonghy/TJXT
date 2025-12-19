@@ -30,7 +30,7 @@ const useProxyState = (groups: IMihomoMixedGroup[]): {
   isOpen: boolean[];
   setIsOpen: React.Dispatch<React.SetStateAction<boolean[]>>;
 } => {
-  const virtuosoRef = useRef<GroupedVirtuosoHandle>(null)
+  const virtuosoRef = useRef<GroupedVirtuosoHandle>(null!)
   
   // 初始化展开状态
   const [isOpen, setIsOpen] = useState<boolean[]>(() => {

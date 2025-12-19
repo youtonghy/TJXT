@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Select, SelectItem, Chip } from '@heroui/react'
+import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Chip, Tabs, Tab } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
-import { IoRefreshOutline, IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoCheckmarkCircle, IoPaperPlaneOutline } from 'react-icons/io5'
+import { API_USER_AGENT } from '@renderer/utils/api-service'
+import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
 import { 
   getAllBackends, 
   getDefaultBackend, 
   getActiveBackend,
+  getBackendApiBaseUrl,
   testAllBackendsLatency, 
   updateBackendPingResults, 
-  setDefaultBackend, 
   initializeBackends,
   findOptimalBackend,
   BackendTestResult 
@@ -55,6 +56,9 @@ interface NetworkStatus {
   lastConnected: Date | null
 }
 
+const WEB_LOGIN_STATE_KEY = 'userCenter.webLoginState'
+const WEB_LOGIN_REDIRECT_URI = 'mihomo://user-center-login'
+
 const UserCenter: React.FC = () => {
   const { t } = useTranslation()
   const { appConfig, patchAppConfig } = useAppConfig()
@@ -63,15 +67,16 @@ const UserCenter: React.FC = () => {
   // Backend management
   const [backends, setBackends] = useState<IUserCenterBackend[]>([])
   const [selectedBackend, setSelectedBackend] = useState<IUserCenterBackend | null>(null)
-  const [backendTestResults, setBackendTestResults] = useState<BackendTestResult[]>([])
+  const [, setBackendTestResults] = useState<BackendTestResult[]>([])
   const [isTestingBackends, setIsTestingBackends] = useState(false)
   // Track if user has manually picked a backend in this session
-  const [userSelectedBackendId, setUserSelectedBackendId] = useState<string | null>(null)
+  const [, setUserSelectedBackendId] = useState<string | null>(null)
   const SELECTED_BACKEND_KEY = 'userCenter.selectedBackendId'
   const READ_ANNOUNCEMENTS_KEY = 'userCenter.readAnnouncementIds'
   
   // Use selected backend URL or fallback to active backend (selected > default)
-  const loginUrl = selectedBackend?.url || getActiveBackend(appConfig).url
+  const activeBackend = selectedBackend || getActiveBackend(appConfig)
+  const apiBaseUrl = getBackendApiBaseUrl(activeBackend)
   
   // 状态管理
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -92,7 +97,13 @@ const UserCenter: React.FC = () => {
     return new Set()
   })
   const [email, setEmail] = useState('')
-  
+
+  const [loginMode, setLoginMode] = useState<'web' | 'telegram'>('web')
+  const [telegramLoginEnabled, setTelegramLoginEnabled] = useState(false)
+  const [webLoginStatus, setWebLoginStatus] = useState<'idle' | 'starting' | 'pending'>('idle')
+  const webLoginStateRef = useRef<string | null>(null)
+  const webLoginTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Telegram Login State
   const [telegramToken, setTelegramToken] = useState<string | null>(null)
   const [telegramStatus, setTelegramStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'expired'>('idle')
@@ -115,7 +126,7 @@ const UserCenter: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   
   // 自动刷新相关
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [, setLastUpdate] = useState<Date | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const backendsRef = useRef<IUserCenterBackend[]>([])
   const hasStartedAutoTest = useRef<boolean>(false)
@@ -127,7 +138,7 @@ const UserCenter: React.FC = () => {
   })
   
   // 服务器测试状态
-  const [serverTestStatus, setServerTestStatus] = useState<{
+  const [, setServerTestStatus] = useState<{
     isLoading: boolean
     lastPing: number | null
     lastTest: Date | null
@@ -225,6 +236,37 @@ const UserCenter: React.FC = () => {
   }
 
   // 通用API请求函数（优化token处理）
+  const clearWebLoginState = useCallback(() => {
+    webLoginStateRef.current = null
+    localStorage.removeItem(WEB_LOGIN_STATE_KEY)
+    if (webLoginTimeoutRef.current) {
+      clearTimeout(webLoginTimeoutRef.current)
+      webLoginTimeoutRef.current = null
+    }
+  }, [])
+
+  const resetWebLogin = useCallback(() => {
+    setWebLoginStatus('idle')
+    clearWebLoginState()
+  }, [clearWebLoginState])
+
+  const getWebLoginState = useCallback(() => {
+    return webLoginStateRef.current || localStorage.getItem(WEB_LOGIN_STATE_KEY)
+  }, [])
+
+  const scheduleWebLoginTimeout = useCallback((expiresInSeconds?: number) => {
+    if (!expiresInSeconds || expiresInSeconds <= 0) return
+    if (webLoginTimeoutRef.current) {
+      clearTimeout(webLoginTimeoutRef.current)
+      webLoginTimeoutRef.current = null
+    }
+    webLoginTimeoutRef.current = setTimeout(() => {
+      setWebLoginStatus('idle')
+      clearWebLoginState()
+      setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginExpired') }))
+    }, expiresInSeconds * 1000)
+  }, [clearWebLoginState, t])
+
   const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const token = tokenManager.getToken()
     if (!token) {
@@ -238,10 +280,11 @@ const UserCenter: React.FC = () => {
         throw new Error('网络连接已断开')
       }
 
-      const response = await fetch(`${loginUrl}${endpoint}`, {
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
         ...options,
         headers: {
           'Authorization': token, // 参考dashboard.html，直接使用token而不是Bearer格式
+          'User-Agent': API_USER_AGENT,
           'Content-Type': 'application/json',
           ...options.headers
         }
@@ -255,7 +298,22 @@ const UserCenter: React.FC = () => {
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        let errorMessage = `HTTP ${response.status}`
+        try {
+          const text = await response.text()
+          const obj = JSON.parse(text)
+          const keys = ['message', 'msg', 'error', 'detail', 'info']
+          for (const k of keys) {
+            const v = (obj as Record<string, unknown>)[k]
+            if (typeof v === 'string' && v.trim()) {
+              errorMessage = v.trim()
+              break
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
@@ -276,7 +334,7 @@ const UserCenter: React.FC = () => {
       console.error(`API request failed for ${endpoint}:`, error)
       throw error
     }
-  }, [loginUrl])
+  }, [apiBaseUrl])
 
   // 获取用户信息
   const fetchUserInfo = useCallback(async (showLoading = true) => {
@@ -287,7 +345,7 @@ const UserCenter: React.FC = () => {
 
     try {
       // 使用 getSubscribe 接口获取详细流量信息
-      const data = await apiRequest('/api/v1/user/getSubscribe')
+      const data = await apiRequest('/user/getSubscribe')
       
       if (data) {
         const newUserInfo: UserInfo = {
@@ -322,10 +380,10 @@ const UserCenter: React.FC = () => {
     }
 
     try {
-      const data = await apiRequest('/api/v1/user/notice/fetch')
+      const data = await apiRequest('/user/notice/fetch')
       
       // 处理不同的响应格式
-      let notices = []
+      let notices: any[] = []
       if (Array.isArray(data)) {
         notices = data
       } else if (data && Array.isArray(data.data)) {
@@ -391,24 +449,17 @@ const UserCenter: React.FC = () => {
     })
   }, [READ_ANNOUNCEMENTS_KEY])
 
-  // 统一刷新所有数据（仅在初始化时使用）
-  const refreshAllData = useCallback(async (showLoading = false) => {
-    if (!isLoggedIn) return
-    
-    await Promise.all([
-      fetchUserInfo(showLoading),
-      fetchAnnouncements(showLoading)
-    ])
-  }, [isLoggedIn, fetchUserInfo, fetchAnnouncements])
-
   // 服务器连接测试
   const testServerConnection = useCallback(async () => {
     setServerTestStatus(prev => ({ ...prev, isLoading: true }))
     
     try {
       const startTime = Date.now()
-      const response = await fetch(`${loginUrl}/api/v1/guest/comm/config`, {
+      const response = await fetch(`${apiBaseUrl}/guest/comm/config`, {
         method: 'GET',
+        headers: {
+          'User-Agent': API_USER_AGENT
+        },
         signal: AbortSignal.timeout(10000) // 10秒超时
       })
       const endTime = Date.now()
@@ -421,6 +472,20 @@ const UserCenter: React.FC = () => {
       })
       
       if (response.ok) {
+        let configData: any = null
+        try {
+          const payload = await response.json()
+          configData = payload?.data ?? payload
+        } catch {
+          configData = null
+        }
+        if (configData) {
+          const rawEnable = configData.telegram_login_enable ?? configData.is_telegram
+          const telegramEnabled = rawEnable === 1 || rawEnable === '1' || rawEnable === true
+          setTelegramLoginEnabled(telegramEnabled)
+        } else {
+          setTelegramLoginEnabled(false)
+        }
         setNetworkStatus({
           isOnline: true,
           lastConnected: new Date()
@@ -435,6 +500,7 @@ const UserCenter: React.FC = () => {
         isLoading: false,
         lastTest: new Date()
       }))
+      setTelegramLoginEnabled(false)
       
       let errorMsg = '服务器连接失败'
       if (error instanceof Error) {
@@ -454,7 +520,7 @@ const UserCenter: React.FC = () => {
       
       setNetworkStatus(prev => ({ ...prev, isOnline: false }))
     }
-  }, [loginUrl])
+  }, [apiBaseUrl])
 
   // Backend management functions
   const initializeBackendList = useCallback(async () => {
@@ -553,19 +619,132 @@ const UserCenter: React.FC = () => {
     }
   }, [patchAppConfig, appConfig])
 
-  const getBackendStatusColor = (backend: IUserCenterBackend): 'success' | 'warning' | 'danger' | 'default' => {
-    if (!backend.lastPing) return 'default'
-    if (backend.lastPing < 300) return 'success'
-    if (backend.lastPing < 1000) return 'warning'
-    return 'danger'
-  }
+  const completeLogin = useCallback(async (authToken: string) => {
+    tokenManager.setToken(authToken, 7)
+    setIsLoggedIn(true)
+    setErrors(prev => ({ ...prev, userInfo: null }))
+    setTelegramToken(null)
+    setTelegramStatus('idle')
+    resetWebLogin()
 
-  const getBackendStatusText = (backend: IUserCenterBackend): string => {
-    if (!backend.lastPing) return '未测试'
-    if (backend.lastPing < 100) return `极快 (${backend.lastPing}ms)`
-    if (backend.lastPing < 300) return `很快 (${backend.lastPing}ms)`
-    if (backend.lastPing < 1000) return `良好 (${backend.lastPing}ms)`
-    return `较慢 (${backend.lastPing}ms)`
+    setNetworkStatus({
+      isOnline: true,
+      lastConnected: new Date()
+    })
+
+    try {
+      await Promise.all([
+        fetchUserInfo(),
+        fetchAnnouncements(),
+        refreshUserSubscription()
+      ])
+
+      try {
+        const authUtils = createUserAuthUtils(appConfig)
+        const subUrl = await authUtils.getUserSubscriptionUrl()
+        if (subUrl) {
+          await addProfileItem({
+            id: 'user-subscription-meta',
+            type: 'remote',
+            name: '用户订阅 (Clash Meta)',
+            url: subUrl,
+            interval: 60 * 60,
+            override: [],
+            useProxy: false,
+            allowFixedInterval: false,
+            substore: false
+          })
+          await changeCurrentProfile('user-subscription-meta')
+        }
+      } catch (e) {
+        console.warn('Profile setup failed:', e)
+      }
+    } catch (e) {
+      console.warn('Initial data load failed:', e)
+    }
+  }, [
+    addProfileItem,
+    appConfig,
+    changeCurrentProfile,
+    fetchAnnouncements,
+    fetchUserInfo,
+    refreshUserSubscription,
+    resetWebLogin
+  ])
+
+  const handleWebLogin = async () => {
+    if (!navigator.onLine) {
+      setErrors(prev => ({ ...prev, userInfo: '网络连接已断开，请检查网络后重试' }))
+      return
+    }
+
+    if (!apiBaseUrl) {
+      setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
+      return
+    }
+
+    resetWebLogin()
+    setWebLoginStatus('starting')
+    setLoading(prev => ({ ...prev, userInfo: true }))
+    setErrors(prev => ({ ...prev, userInfo: null }))
+
+    try {
+      const state = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2)
+      webLoginStateRef.current = state
+      localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
+
+      const response = await fetch(`${apiBaseUrl}/passport/auth/thirdPartyLogin/init`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': API_USER_AGENT
+        },
+        body: JSON.stringify({
+          redirect_uri: WEB_LOGIN_REDIRECT_URI,
+          state
+        })
+      })
+
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        if (response.status === 404) {
+          throw new Error(t('userCenter.webLoginNotSupported'))
+        }
+        throw new Error(response.ok ? t('userCenter.webLoginInitFailed') : `HTTP ${response.status}`)
+      }
+
+      let data: any = null
+      try {
+        data = await response.json()
+      } catch {
+        throw new Error(t('userCenter.webLoginInitFailed'))
+      }
+
+      if (!response.ok) {
+        const fallback = response.status === 404
+          ? t('userCenter.webLoginNotSupported')
+          : t('userCenter.webLoginInitFailed')
+        throw new Error(data?.message || fallback)
+      }
+
+      const loginPageUrl = data?.data?.url ?? data?.url
+      if (!loginPageUrl) {
+        throw new Error(t('userCenter.webLoginInitFailed'))
+      }
+
+      setWebLoginStatus('pending')
+      scheduleWebLoginTimeout(data?.data?.expires_in)
+      window.open(loginPageUrl, '_blank')
+    } catch (error) {
+      resetWebLogin()
+      const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginInitFailed')
+      setErrors(prev => ({ ...prev, userInfo: errorMessage }))
+    } finally {
+      setLoading(prev => ({ ...prev, userInfo: false }))
+    }
   }
 
   // 登录处理
@@ -587,15 +766,17 @@ const UserCenter: React.FC = () => {
       return
     }
 
+    resetWebLogin()
     setLoading(prev => ({ ...prev, userInfo: true }))
     setErrors(prev => ({ ...prev, userInfo: null }))
     setTelegramStatus('idle')
 
     try {
-      const response = await fetch(`${loginUrl}/api/v1/passport/auth/loginWithTelegram`, {
+      const response = await fetch(`${apiBaseUrl}/passport/auth/loginWithTelegram`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'User-Agent': API_USER_AGENT
         },
         body: JSON.stringify({
           email: email.trim()
@@ -644,8 +825,12 @@ const UserCenter: React.FC = () => {
 
     const checkStatus = async () => {
         try {
-            const response = await fetch(`${loginUrl}/api/v1/passport/auth/checkTelegramLogin?token=${telegramToken}`)
-            const data = await response.json()
+	            const response = await fetch(`${apiBaseUrl}/passport/auth/checkTelegramLogin?token=${telegramToken}`, {
+	              headers: {
+	                'User-Agent': API_USER_AGENT
+	              }
+	            })
+	            const data = await response.json()
             
             if (response.ok && data.data) {
                 const { status, verify_code } = data.data
@@ -672,13 +857,17 @@ const UserCenter: React.FC = () => {
             clearInterval(pollingIntervalRef.current)
         }
     }
-  }, [telegramToken, telegramStatus, loginUrl])
+  }, [telegramToken, telegramStatus, apiBaseUrl])
 
   // Token Login (Final Step)
   const performTokenLogin = async (verifyCode: string) => {
       setLoading(prev => ({ ...prev, userInfo: true }))
       try {
-        const response = await fetch(`${loginUrl}/api/v1/passport/auth/token2Login?verify=${verifyCode}`)
+	        const response = await fetch(`${apiBaseUrl}/passport/auth/token2Login?verify=${verifyCode}`, {
+	          headers: {
+	            'User-Agent': API_USER_AGENT
+	          }
+	        })
         
         if (!response.ok) {
            throw new Error('验证登录失败')
@@ -687,51 +876,7 @@ const UserCenter: React.FC = () => {
         const data = await response.json()
 
         if (data.data && data.data.auth_data) {
-             tokenManager.setToken(data.data.auth_data, 7)
-             setIsLoggedIn(true)
-             setErrors(prev => ({ ...prev, userInfo: null }))
-             setTelegramToken(null)
-             setTelegramStatus('idle')
-             
-             setNetworkStatus({
-                isOnline: true,
-                lastConnected: new Date()
-             })
-
-             // Load data
-             try {
-                await Promise.all([
-                    fetchUserInfo(),
-                    fetchAnnouncements(),
-                    refreshUserSubscription()
-                ])
-
-                 // Setup subscription profile
-                try {
-                    const authUtils = createUserAuthUtils(appConfig)
-                    const subUrl = await authUtils.getUserSubscriptionUrl()
-                    if (subUrl) {
-                    await addProfileItem({
-                        id: 'user-subscription-meta',
-                        type: 'remote',
-                        name: '用户订阅 (Clash Meta)',
-                        url: subUrl,
-                        interval: 60 * 60,
-                        override: [],
-                        useProxy: false,
-                        allowFixedInterval: false,
-                        substore: false
-                    })
-                    await changeCurrentProfile('user-subscription-meta')
-                    }
-                } catch (e) {
-                    console.warn('Profile setup failed:', e)
-                }
-
-             } catch (e) {
-                 console.warn('Initial data load failed:', e)
-             }
-
+             await completeLogin(data.data.auth_data)
         } else {
             throw new Error('返回数据格式错误')
         }
@@ -745,6 +890,50 @@ const UserCenter: React.FC = () => {
       }
   }
 
+  useEffect(() => {
+    const handleUserCenterLogin = async (_event: unknown, payload?: { accessToken?: string | null; error?: string | null; state?: string | null }) => {
+      if (!payload) return
+      const expectedState = getWebLoginState()
+      if (payload.state && expectedState && payload.state !== expectedState) {
+        setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginStateMismatch') }))
+        resetWebLogin()
+        return
+      }
+
+      if (payload.error) {
+        const message = payload.error === 'access_denied'
+          ? t('userCenter.webLoginDenied')
+          : t('userCenter.webLoginFailed')
+        setErrors(prev => ({ ...prev, userInfo: message }))
+        resetWebLogin()
+        return
+      }
+
+      if (payload.accessToken) {
+        setLoading(prev => ({ ...prev, userInfo: true }))
+        try {
+          await completeLogin(payload.accessToken)
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginFailed')
+          setErrors(prev => ({ ...prev, userInfo: errorMessage }))
+        } finally {
+          setLoading(prev => ({ ...prev, userInfo: false }))
+        }
+      }
+    }
+
+    window.electron.ipcRenderer.on('userCenterLogin', handleUserCenterLogin)
+    return () => {
+      window.electron.ipcRenderer.removeListener('userCenterLogin', handleUserCenterLogin)
+    }
+  }, [completeLogin, getWebLoginState, resetWebLogin, t])
+
+  useEffect(() => {
+    return () => {
+      clearWebLoginState()
+    }
+  }, [clearWebLoginState])
+
   // 退出登录
   const handleLogout = () => {
     tokenManager.clearToken()
@@ -752,6 +941,7 @@ const UserCenter: React.FC = () => {
     setUserInfo(null)
     setAnnouncements([])
     setEmail('')
+    resetWebLogin()
     // Reset Telegram State
     setTelegramToken(null)
     setTelegramStatus('idle')
@@ -827,6 +1017,12 @@ rules:
       }
     }).catch(console.error)
   }
+
+  useEffect(() => {
+    if (!telegramLoginEnabled && loginMode === 'telegram') {
+      setLoginMode('web')
+    }
+  }, [loginMode, telegramLoginEnabled])
 
   // 初始化
   useEffect(() => {
@@ -905,6 +1101,8 @@ rules:
         intervalRef.current = null
       }
     }
+
+    return
   }, [isLoggedIn, backends.length]) // 依赖于登录状态和后端数量
 
   // Token过期检查和提醒
@@ -955,7 +1153,7 @@ rules:
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, []) // 移除依赖，不再需要refreshAllData
+  }, [])
 
   // 工具函数
   const formatBytes = (bytes: number) => {
@@ -968,10 +1166,6 @@ rules:
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString('zh-CN')
-  }
-
-  const formatDateTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString('zh-CN')
   }
 
   const showAnnouncementModal = (announcement: Announcement) => {
@@ -1044,7 +1238,80 @@ rules:
                 </div>
               )}
               
-              <div className="space-y-4">
+              {telegramLoginEnabled && (
+                <Tabs
+                  aria-label={t('userCenter.loginMethod')}
+                  selectedKey={loginMode}
+                  onSelectionChange={(key) => setLoginMode(key as 'web' | 'telegram')}
+                  variant="underlined"
+                  className="mb-2"
+                >
+                  <Tab key="web" title={t('userCenter.loginWebTab')} />
+                  <Tab key="telegram" title={t('userCenter.loginTelegramTab')} />
+                </Tabs>
+              )}
+
+              {loginMode === 'web' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-default-50 border border-default-200 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <IoLogInOutline />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="font-semibold text-foreground">{t('userCenter.webLoginTitle')}</h4>
+                        <p className="text-xs text-default-500">{t('userCenter.webLoginHint')}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {webLoginStatus === 'pending' && (
+                    <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg animate-pulse">
+                      <div className="flex flex-col items-center gap-2 text-center">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                          <IoLogInOutline />
+                        </div>
+                        <h4 className="font-bold text-primary">{t('userCenter.webLoginPendingTitle')}</h4>
+                        <p className="text-xs text-default-500">{t('userCenter.webLoginPendingDesc')}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Button
+                      color="primary"
+                      size="lg"
+                      variant="solid"
+                      radius="lg"
+                      className="w-full h-12 text-base font-extrabold shadow-lg"
+                      onPress={handleWebLogin}
+                      isLoading={webLoginStatus === 'starting'}
+                      isDisabled={!networkStatus.isOnline || webLoginStatus === 'starting' || telegramStatus === 'pending'}
+                      startContent={webLoginStatus !== 'starting' && <IoLogInOutline />}
+                    >
+                      {webLoginStatus === 'pending'
+                        ? t('userCenter.webLoginOpenAgain')
+                        : t('userCenter.webLoginButton')}
+                    </Button>
+                    {webLoginStatus === 'pending' && (
+                      <Button
+                        color="danger"
+                        size="lg"
+                        variant="flat"
+                        radius="lg"
+                        className="w-full h-12 text-base font-medium"
+                        onPress={resetWebLogin}
+                      >
+                        {t('userCenter.webLoginCancel')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {loginMode === 'telegram' && (
+                <>
+                  <div className="space-y-4">
                 <Input
                   type="email"
                   value={email}
@@ -1053,7 +1320,7 @@ rules:
                   size="lg"
                   variant="bordered"
                   radius="lg"
-                  isDisabled={loading.userInfo || !networkStatus.isOnline || telegramStatus === 'pending'}
+                  isDisabled={loading.userInfo || !networkStatus.isOnline || telegramStatus === 'pending' || webLoginStatus === 'pending'}
                   startContent={<IoPersonOutline className="text-default-400" />}
                   classNames={{
                     input: "text-base",
@@ -1099,7 +1366,7 @@ rules:
                     className="w-full h-12 text-base font-extrabold shadow-lg"
                     onPress={handleTelegramLogin}
                     isLoading={loading.userInfo}
-                    isDisabled={!email || !networkStatus.isOnline}
+                    isDisabled={!email || !networkStatus.isOnline || webLoginStatus === 'pending'}
                     startContent={!loading.userInfo && <IoPaperPlaneOutline />}
                   >
                     {loading.userInfo ? '请求中...' : 'Telegram 登录'}
@@ -1107,6 +1374,9 @@ rules:
               )}
               
               {/* 服务器选择和测试（未登录也可选择，会话生效） */}
+                </>
+              )}
+
               {backends.length >= 1 && (
                 <div className="text-center border-t border-default-200 pt-4">
                   <div className="space-y-4 p-4 bg-default-50 rounded-xl border border-default-200 shadow-sm">

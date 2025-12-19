@@ -81,7 +81,7 @@ const ProfileItem: React.FC<Props> = (props) => {
     const isUserSubscription = info.id === 'user-subscription-meta'
     const isEmptyUserSubscription = isUserSubscription && info.url === 'https://example.com/empty-subscription'
     
-    const list = []
+    const list: MenuItem[] = []
 
     // Only add edit options if it's not an empty user subscription AND not user subscription
     if (!isEmptyUserSubscription && !isUserSubscription) {

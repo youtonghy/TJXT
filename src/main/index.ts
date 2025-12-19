@@ -252,6 +252,20 @@ async function handleDeepLink(url: string): Promise<void> {
         dialog.showErrorBox(i18next.t('profiles.error.importFailed'), `${url}\n${e}`)
       }
     }
+    case 'user-center-login': {
+      const accessToken =
+        urlObj.searchParams.get('access_token') ??
+        urlObj.searchParams.get('accessToken') ??
+        urlObj.searchParams.get('token')
+      const error = urlObj.searchParams.get('error')
+      const state = urlObj.searchParams.get('state')
+      mainWindow?.webContents.send('userCenterLogin', {
+        accessToken,
+        error,
+        state
+      })
+      break
+    }
   }
 }
 

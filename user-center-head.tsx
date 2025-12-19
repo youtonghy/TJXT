@@ -69,38 +69,39 @@ const UserCenter: React.FC = () => {
   // Use selected backend URL or fallback to active backend (selected > default)
   const loginUrl = selectedBackend?.url || getActiveBackend(appConfig).url
   
-  // 状态管�?  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // ç¶æç®¡ç?  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   
-  // 加载状�?  const [loading, setLoading] = useState<LoadingState>({
+  // å è½½ç¶æ?  const [loading, setLoading] = useState<LoadingState>({
     userInfo: false,
     announcements: false
   })
   
-  // 错误状�?  const [errors, setErrors] = useState<ErrorState>({
+  // éè¯¯ç¶æ?  const [errors, setErrors] = useState<ErrorState>({
     userInfo: null,
     announcements: null
   })
   
-  // 模态框状�?  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
+  // æ¨¡ææ¡ç¶æ?  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   
-  // 自动刷新相关
+  // èªå¨å·æ°ç¸å
+³
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const backendsRef = useRef<IUserCenterBackend[]>([])
   const hasStartedAutoTest = useRef<boolean>(false)
   
-  // 网络状�?  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
+  // ç½ç»ç¶æ?  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
     isOnline: navigator.onLine,
     lastConnected: navigator.onLine ? new Date() : null
   })
   
-  // 服务器测试状�?  const [serverTestStatus, setServerTestStatus] = useState<{
+  // æå¡å¨æµè¯ç¶æ?  const [serverTestStatus, setServerTestStatus] = useState<{
     isLoading: boolean
     lastPing: number | null
     lastTest: Date | null
@@ -110,9 +111,10 @@ const UserCenter: React.FC = () => {
     lastTest: null
   })
   
-  // Token管理工具函数
+  // Tokenç®¡çå·¥å
+·å½æ°
   const tokenManager = {
-    // 设置Token（带过期时间�?    setToken: (token: string, expiresInDays: number = 7) => {
+    // è®¾ç½®Tokenï¼å¸¦è¿ææ¶é´ï¼?    setToken: (token: string, expiresInDays: number = 7) => {
       const now = new Date()
       const expiresAt = now.getTime() + (expiresInDays * 24 * 60 * 60 * 1000)
       
@@ -126,7 +128,7 @@ const UserCenter: React.FC = () => {
       localStorage.setItem('userTokenData', JSON.stringify(tokenData))
     },
     
-    // 获取Token
+    // è·åToken
     getToken: (): string | null => {
       const token = localStorage.getItem('userToken')
       const tokenDataStr = localStorage.getItem('userTokenData')
@@ -139,26 +141,30 @@ const UserCenter: React.FC = () => {
         const tokenData = JSON.parse(tokenDataStr)
         const now = Date.now()
         
-        // 检查是否过�?        if (tokenData.expiresAt && now > tokenData.expiresAt) {
+        // æ£æ¥æ¯å¦è¿æ?        if (tokenData.expiresAt && now > tokenData.expiresAt) {
           tokenManager.clearToken()
           return null
         }
         
         return token
       } catch {
-        // 数据格式错误，清除token
+        // æ°æ®æ ¼å¼éè¯¯ï¼æ¸
+é¤token
         tokenManager.clearToken()
         return null
       }
     },
     
-    // 清除Token
+    // æ¸
+é¤Token
     clearToken: () => {
       localStorage.removeItem('userToken')
       localStorage.removeItem('userTokenData')
-      localStorage.removeItem('userEmail') // 清除记住的邮�?    },
+      localStorage.removeItem('userEmail') // æ¸
+é¤è®°ä½çé®ç®?    },
     
-    // 检查Token是否即将过期�?4小时内）
+    // æ£æ¥Tokenæ¯å¦å³å°è¿æï¼?4å°æ¶å
+ï¼
     isTokenExpiringSoon: (): boolean => {
       const tokenDataStr = localStorage.getItem('userTokenData')
       if (!tokenDataStr) return false
@@ -174,7 +180,7 @@ const UserCenter: React.FC = () => {
       }
     },
     
-    // 获取Token剩余天数
+    // è·åTokenå©ä½å¤©æ°
     getTokenRemainingDays: (): number => {
       const tokenDataStr = localStorage.getItem('userTokenData')
       if (!tokenDataStr) return 0
@@ -194,7 +200,7 @@ const UserCenter: React.FC = () => {
     }
   }
 
-  // 通用API请求函数（优化token处理�?  const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+  // éç¨APIè¯·æ±å½æ°ï¼ä¼åtokenå¤çï¼?  const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const token = tokenManager.getToken()
     if (!token) {
       setIsLoggedIn(false)
@@ -202,21 +208,22 @@ const UserCenter: React.FC = () => {
     }
 
     try {
-      // 检查网络状�?      if (!navigator.onLine) {
-        throw new Error('网络连接已断开')
+      // æ£æ¥ç½ç»ç¶æ?      if (!navigator.onLine) {
+        throw new Error('ç½ç»è¿æ¥å·²æ­å¼')
       }
 
       const response = await fetch(`${loginUrl}${endpoint}`, {
         ...options,
         headers: {
-          'Authorization': token, // 参考dashboard.html，直接使用token而不是Bearer格式
+          'Authorization': token, // åèdashboard.htmlï¼ç´æ¥ä½¿ç¨tokenèä¸æ¯Beareræ ¼å¼
           'Content-Type': 'application/json',
           ...options.headers
         }
       })
 
       if (response.status === 401) {
-        // Token无效或过期，清除并重新登�?        tokenManager.clearToken()
+        // Tokenæ ææè¿æï¼æ¸
+é¤å¹¶éæ°ç»å½?        tokenManager.clearToken()
         setIsLoggedIn(false)
         return null
       }
@@ -227,14 +234,14 @@ const UserCenter: React.FC = () => {
 
       const data = await response.json()
       
-      // API请求成功，更新网络状�?      setNetworkStatus({
+      // APIè¯·æ±æåï¼æ´æ°ç½ç»ç¶æ?      setNetworkStatus({
         isOnline: true,
         lastConnected: new Date()
       })
       
       return data.data || data
     } catch (error) {
-      // 检查是否是网络错误
+      // æ£æ¥æ¯å¦æ¯ç½ç»éè¯¯
       if (!navigator.onLine) {
         setNetworkStatus(prev => ({ ...prev, isOnline: false }))
       }
@@ -244,7 +251,7 @@ const UserCenter: React.FC = () => {
     }
   }, [loginUrl])
 
-  // 获取用户信息
+  // è·åç¨æ·ä¿¡æ¯
   const fetchUserInfo = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(prev => ({ ...prev, userInfo: true }))
@@ -252,8 +259,8 @@ const UserCenter: React.FC = () => {
     }
 
     try {
-      // 使用 getSubscribe 接口获取详细流量信息
-      const data = await apiRequest('/api/v1/user/getSubscribe')
+      // ä½¿ç¨ getSubscribe æ¥å£è·åè¯¦ç»æµéä¿¡æ¯
+      const data = await apiRequest('/api/v3/user/getSubscribe')
       
       if (data) {
         const newUserInfo: UserInfo = {
@@ -270,15 +277,18 @@ const UserCenter: React.FC = () => {
         setLastUpdate(new Date())
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '获取用户信息失败'
+      const errorMessage = error instanceof Error ? error.message : 'è·åç¨æ·ä¿¡æ¯å¤±è´¥'
       setErrors(prev => ({ ...prev, userInfo: errorMessage }))
       
-      // API失败时，仅在初次加载时使用模拟数�?      console.warn('用户信息加载失败，使用模拟数�?', error)
+      // APIå¤±è´¥æ¶ï¼ä»
+å¨åæ¬¡å è½½æ¶ä½¿ç¨æ¨¡ææ°æ?      console.warn('ç¨æ·ä¿¡æ¯å è½½å¤±è´¥ï¼ä½¿ç¨æ¨¡ææ°æ?', error)
     } finally {
       setLoading(prev => ({ ...prev, userInfo: false }))
     }
-  }, [apiRequest]) // 移除userInfo依赖，避免无限循�?
-  // 获取公告
+  }, [apiRequest]) // ç§»é¤userInfoä¾èµï¼é¿å
+æ éå¾ªç?
+  // è·åå
+¬å
   const fetchAnnouncements = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(prev => ({ ...prev, announcements: true }))
@@ -286,9 +296,9 @@ const UserCenter: React.FC = () => {
     }
 
     try {
-      const data = await apiRequest('/api/v1/user/notice/fetch')
+      const data = await apiRequest('/api/v3/user/notice/fetch')
       
-      // 处理不同的响应格�?      let notices = []
+      // å¤çä¸åçååºæ ¼å¼?      let notices = []
       if (Array.isArray(data)) {
         notices = data
       } else if (data && Array.isArray(data.data)) {
@@ -302,7 +312,8 @@ const UserCenter: React.FC = () => {
           .filter((notice: any) => notice.show !== 0)
           .map((notice: any) => ({
             id: String(notice.id || Math.random().toString(36).slice(2)),
-            title: notice.title || '公告',
+            title: notice.title || 'å
+¬å',
             content: notice.content || '',
             date: notice.created_at ? 
               new Date(notice.created_at * 1000).toLocaleDateString('zh-CN') :
@@ -310,7 +321,7 @@ const UserCenter: React.FC = () => {
             show: notice.show
           }))
           .sort((a: any, b: any) => {
-            // 按日期降序排列（最新的在前�?            const dateA = new Date(a.date).getTime()
+            // ææ¥æéåºæåï¼ææ°çå¨åï¼?            const dateA = new Date(a.date).getTime()
             const dateB = new Date(b.date).getTime()
             return dateB - dateA
           })
@@ -319,16 +330,20 @@ const UserCenter: React.FC = () => {
         setAnnouncements([])
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '获取公告失败'
+      const errorMessage = error instanceof Error ? error.message : 'è·åå
+¬åå¤±è´¥'
       setErrors(prev => ({ ...prev, announcements: errorMessage }))
       
-      // API失败时，仅在初次加载时使用模拟数�?      console.warn('公告加载失败，使用模拟数�?', error)
+      // APIå¤±è´¥æ¶ï¼ä»
+å¨åæ¬¡å è½½æ¶ä½¿ç¨æ¨¡ææ°æ?      console.warn('å
+¬åå è½½å¤±è´¥ï¼ä½¿ç¨æ¨¡ææ°æ?', error)
     } finally {
       setLoading(prev => ({ ...prev, announcements: false }))
     }
   }, [apiRequest])
 
-  // 统一刷新所有数据（仅在初始化时使用�?  const refreshAllData = useCallback(async (showLoading = false) => {
+  // ç»ä¸å·æ°æææ°æ®ï¼ä»
+å¨åå§åæ¶ä½¿ç¨ï¼?  const refreshAllData = useCallback(async (showLoading = false) => {
     if (!isLoggedIn) return
     
     await Promise.all([
@@ -337,14 +352,15 @@ const UserCenter: React.FC = () => {
     ])
   }, [isLoggedIn, fetchUserInfo, fetchAnnouncements])
 
-  // 服务器连接测�?  const testServerConnection = useCallback(async () => {
+  // æå¡å¨è¿æ¥æµè¯?  const testServerConnection = useCallback(async () => {
     setServerTestStatus(prev => ({ ...prev, isLoading: true }))
     
     try {
       const startTime = Date.now()
-      const response = await fetch(`${loginUrl}/api/v1/guest/comm/config`, {
+      const response = await fetch(`${loginUrl}/api/v3/guest/comm/config`, {
         method: 'GET',
-        signal: AbortSignal.timeout(10000) // 10秒超�?      })
+        signal: AbortSignal.timeout(10000) // 10ç§è¶
+æ?      })
       const endTime = Date.now()
       const ping = endTime - startTime
       
@@ -361,7 +377,7 @@ const UserCenter: React.FC = () => {
         })
         setErrors(prev => ({ ...prev, userInfo: null }))
       } else {
-        throw new Error(`服务器响应异�?(${response.status})`)
+        throw new Error(`æå¡å¨ååºå¼å¸?(${response.status})`)
       }
     } catch (error) {
       setServerTestStatus(prev => ({
@@ -370,12 +386,13 @@ const UserCenter: React.FC = () => {
         lastTest: new Date()
       }))
       
-      let errorMsg = '服务器连接失�?
+      let errorMsg = 'æå¡å¨è¿æ¥å¤±è´?
       if (error instanceof Error) {
         if (error.name === 'AbortError' || error.message.includes('timeout')) {
-          errorMsg = '服务器响应超�?
+          errorMsg = 'æå¡å¨ååºè¶
+æ?
         } else if (error.message.includes('fetch')) {
-          errorMsg = '网络连接错误'
+          errorMsg = 'ç½ç»è¿æ¥éè¯¯'
         } else {
           errorMsg = error.message
         }
@@ -383,7 +400,7 @@ const UserCenter: React.FC = () => {
       
       setErrors(prev => ({ 
         ...prev, 
-        userInfo: `服务器测试失�? ${errorMsg}` 
+        userInfo: `æå¡å¨æµè¯å¤±è´? ${errorMsg}` 
       }))
       
       setNetworkStatus(prev => ({ ...prev, isOnline: false }))
@@ -396,7 +413,7 @@ const UserCenter: React.FC = () => {
       await initializeBackends(patchAppConfig, appConfig)
       const availableBackends = getAllBackends(appConfig)
       setBackends(availableBackends)
-      backendsRef.current = availableBackends // 更新 ref
+      backendsRef.current = availableBackends // æ´æ° ref
       // Restore previously selected backend from storage if exists
       const savedId = localStorage.getItem(SELECTED_BACKEND_KEY)
       const saved = availableBackends.find(b => b.id === savedId)
@@ -427,7 +444,7 @@ const UserCenter: React.FC = () => {
       // Update local backend list
       const updatedBackends = getAllBackends(appConfig)
       setBackends(updatedBackends)
-      backendsRef.current = updatedBackends // 更新 ref
+      backendsRef.current = updatedBackends // æ´æ° ref
       
       return results
     } catch (error) {
@@ -453,7 +470,7 @@ const UserCenter: React.FC = () => {
       // Get updated backends with ping results
       const updatedBackends = getAllBackends(appConfig)
       setBackends(updatedBackends)
-      backendsRef.current = updatedBackends // 更新 ref
+      backendsRef.current = updatedBackends // æ´æ° ref
       
       // Find optimal backend and set as current selection (do not change default)
       const optimalBackend = findOptimalBackend(updatedBackends)
@@ -495,29 +512,31 @@ const UserCenter: React.FC = () => {
   }
 
   const getBackendStatusText = (backend: IUserCenterBackend): string => {
-    if (!backend.lastPing) return '未测�?
-    if (backend.lastPing < 100) return `极快 (${backend.lastPing}ms)`
-    if (backend.lastPing < 300) return `很快 (${backend.lastPing}ms)`
-    if (backend.lastPing < 1000) return `良好 (${backend.lastPing}ms)`
-    return `较慢 (${backend.lastPing}ms)`
+    if (!backend.lastPing) return 'æªæµè¯?
+    if (backend.lastPing < 100) return `æå¿« (${backend.lastPing}ms)`
+    if (backend.lastPing < 300) return `å¾å¿« (${backend.lastPing}ms)`
+    if (backend.lastPing < 1000) return `è¯å¥½ (${backend.lastPing}ms)`
+    return `è¾æ
+¢ (${backend.lastPing}ms)`
   }
 
-  // 登录处理
+  // ç»å½å¤ç
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      setErrors(prev => ({ ...prev, userInfo: '请填写完整的邮箱和密�? }))
+      setErrors(prev => ({ ...prev, userInfo: 'è¯·å¡«åå®æ´çé®ç®±åå¯ç ? }))
       return
     }
     
-    // 简单的邮箱格式验证
+    // ç®åçé®ç®±æ ¼å¼éªè¯
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
-      setErrors(prev => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
+      setErrors(prev => ({ ...prev, userInfo: 'è¯·è¾å
+¥æ­£ç¡®çé®ç®±æ ¼å¼' }))
       return
     }
     
-    // 检查网络状�?    if (!navigator.onLine) {
-      setErrors(prev => ({ ...prev, userInfo: '网络连接已断开，请检查网络后重试' }))
+    // æ£æ¥ç½ç»ç¶æ?    if (!navigator.onLine) {
+      setErrors(prev => ({ ...prev, userInfo: 'ç½ç»è¿æ¥å·²æ­å¼ï¼è¯·æ£æ¥ç½ç»åéè¯' }))
       return
     }
     
@@ -525,8 +544,8 @@ const UserCenter: React.FC = () => {
     setErrors(prev => ({ ...prev, userInfo: null }))
     
     try {
-      // 参考login.html的API调用方式
-      const response = await fetch(`${loginUrl}/api/v1/passport/auth/login`, {
+      // åèlogin.htmlçAPIè°ç¨æ¹å¼
+      const response = await fetch(`${loginUrl}/api/v3/passport/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -537,30 +556,31 @@ const UserCenter: React.FC = () => {
         })
       })
       
-      // 检查响应状�?      if (!response.ok) {
-        let errorMessage = '登录失败'
+      // æ£æ¥ååºç¶æ?      if (!response.ok) {
+        let errorMessage = 'ç»å½å¤±è´¥'
         
         switch (response.status) {
           case 400:
-            errorMessage = '请求参数错误，请检查邮箱和密码格式'
+            errorMessage = 'è¯·æ±åæ°éè¯¯ï¼è¯·æ£æ¥é®ç®±åå¯ç æ ¼å¼'
             break
           case 401:
-            errorMessage = '邮箱或密码错误，请重新输�?
+            errorMessage = 'é®ç®±æå¯ç éè¯¯ï¼è¯·éæ°è¾å
+?
             break
           case 403:
-            errorMessage = '账户已被禁用，请联系管理�?
+            errorMessage = 'è´¦æ·å·²è¢«ç¦ç¨ï¼è¯·èç³»ç®¡çå?
             break
           case 429:
-            errorMessage = '登录尝试过于频繁，请稍后重试'
+            errorMessage = 'ç»å½å°è¯è¿äºé¢ç¹ï¼è¯·ç¨åéè¯'
             break
           case 500:
           case 502:
           case 503:
           case 504:
-            errorMessage = '服务器暂时无法访问，请稍后重�?
+            errorMessage = 'æå¡å¨ææ¶æ æ³è®¿é®ï¼è¯·ç¨åéè¯?
             break
           default:
-            errorMessage = `服务器错�?(${response.status})`
+            errorMessage = `æå¡å¨éè¯?(${response.status})`
         }
         
         throw new Error(errorMessage)
@@ -569,28 +589,34 @@ const UserCenter: React.FC = () => {
       const data = await response.json()
       
       if (data.data && data.data.auth_data) {
-        // 登录成功，使用token管理器保存token�?天有效期�?        tokenManager.setToken(data.data.auth_data, 7)
+        // ç»å½æåï¼ä½¿ç¨tokenç®¡çå¨ä¿å­tokenï¼?å¤©æææï¼?        tokenManager.setToken(data.data.auth_data, 7)
         
-        // 保存用户邮箱以便下次自动填入
+        // ä¿å­ç¨æ·é®ç®±ä»¥ä¾¿ä¸æ¬¡èªå¨å¡«å
+¥
         localStorage.setItem('userEmail', email.trim())
         
         setIsLoggedIn(true)
         setErrors(prev => ({ ...prev, userInfo: null }))
         
-        // 更新网络状�?        setNetworkStatus({
+        // æ´æ°ç½ç»ç¶æ?        setNetworkStatus({
           isOnline: true,
           lastConnected: new Date()
         })
         
-        // 并行加载用户数据
+        // å¹¶è¡å è½½ç¨æ·æ°æ®
         try {
           await Promise.all([
             fetchUserInfo(),
             fetchAnnouncements(),
-            refreshUserSubscription() // 刷新用户订阅链接
+            refreshUserSubscription() // å·æ°ç¨æ·è®¢é
+é¾æ¥
           ])
 
-          // 立即拉取订阅并切换为当前配置，避免仍显示初始内容
+          // ç«å³æåè®¢é
+å¹¶åæ¢ä¸ºå½åé
+ç½®ï¼é¿å
+ä»æ¾ç¤ºåå§å
+å®¹
           try {
             const authUtils = createUserAuthUtils(appConfig)
             const subUrl = await authUtils.getUserSubscriptionUrl()
@@ -598,9 +624,10 @@ const UserCenter: React.FC = () => {
               await addProfileItem({
                 id: 'user-subscription-meta',
                 type: 'remote',
-                name: '用户订阅 (Clash Meta)',
+                name: 'ç¨æ·è®¢é
+ (Clash Meta)',
                 url: subUrl,
-                interval: 60 * 60, // 60分钟
+                interval: 60 * 60, // 60åé
                 override: [],
                 useProxy: false,
                 allowFixedInterval: false,
@@ -608,37 +635,40 @@ const UserCenter: React.FC = () => {
               })
               await changeCurrentProfile('user-subscription-meta')
             } else {
-              console.warn('未获取到订阅链接，跳过立即拉�?)
+              console.warn('æªè·åå°è®¢é
+é¾æ¥ï¼è·³è¿ç«å³æå?)
             }
           } catch (e) {
-            console.warn('登录后立即拉取并切换订阅失败�?, e)
+            console.warn('ç»å½åç«å³æåå¹¶åæ¢è®¢é
+å¤±è´¥ï¼?, e)
           }
         } catch (dataError) {
-          // 即使数据加载失败，登录仍然成�?          console.warn('Initial data loading failed:', dataError)
+          // å³ä½¿æ°æ®å è½½å¤±è´¥ï¼ç»å½ä»ç¶æå?          console.warn('Initial data loading failed:', dataError)
         }
         
       } else {
-        // API返回成功但数据格式不正确
-        throw new Error(data.message || '登录响应数据格式错误')
+        // APIè¿åæåä½æ°æ®æ ¼å¼ä¸æ­£ç¡®
+        throw new Error(data.message || 'ç»å½ååºæ°æ®æ ¼å¼éè¯¯')
       }
     } catch (error) {
-      let errorMessage = '登录失败，请稍后重试'
+      let errorMessage = 'ç»å½å¤±è´¥ï¼è¯·ç¨åéè¯'
       
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        // 网络连接错误
-        errorMessage = '无法连接到服务器，请检查网络连接和服务器地址'
+        // ç½ç»è¿æ¥éè¯¯
+        errorMessage = 'æ æ³è¿æ¥å°æå¡å¨ï¼è¯·æ£æ¥ç½ç»è¿æ¥åæå¡å¨å°å'
         setNetworkStatus(prev => ({ ...prev, isOnline: false }))
       } else if (!navigator.onLine) {
-        // 网络已断开
-        errorMessage = '网络连接已断开'
+        // ç½ç»å·²æ­å¼
+        errorMessage = 'ç½ç»è¿æ¥å·²æ­å¼'
         setNetworkStatus(prev => ({ ...prev, isOnline: false }))
       } else if (error instanceof Error) {
-        // 使用具体的错误信�?        errorMessage = error.message
+        // ä½¿ç¨å
+·ä½çéè¯¯ä¿¡æ?        errorMessage = error.message
       }
       
       setErrors(prev => ({ ...prev, userInfo: errorMessage }))
       
-      // 记录错误用于调试
+      // è®°å½éè¯¯ç¨äºè°è¯
       console.error('Login failed:', {
         error,
         email: email.trim(),
@@ -650,7 +680,7 @@ const UserCenter: React.FC = () => {
     }
   }
 
-  // 退出登�?  const handleLogout = () => {
+  // éåºç»å½?  const handleLogout = () => {
     tokenManager.clearToken()
     setIsLoggedIn(false)
     setUserInfo(null)
@@ -658,27 +688,38 @@ const UserCenter: React.FC = () => {
     setEmail('')
     setPassword('')
     
-    // 重置自动测试标志
+    // éç½®èªå¨æµè¯æ å¿
     hasStartedAutoTest.current = false
     
-    // 清理定时�?    if (intervalRef.current) {
+    // æ¸
+çå®æ¶å?    if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
     
-    // 清理错误状�?    setErrors({
+    // æ¸
+çéè¯¯ç¶æ?    setErrors({
       userInfo: null,
       announcements: null
     })
     
-    // 刷新用户订阅为空白状态，并更新订阅内容为默认空白配置
+    // å·æ°ç¨æ·è®¢é
+ä¸ºç©ºç½ç¶æï¼å¹¶æ´æ°è®¢é
+å
+å®¹ä¸ºé»è®¤ç©ºç½é
+ç½®
     refreshUserSubscription().then(async () => {
       try {
-        // 获取用户订阅项ID
+        // è·åç¨æ·è®¢é
+é¡¹ID
         const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
 
-        // 关键修复：将订阅项在配置中改为“空白占位”URL并禁用自动更新，避免重启后被重新拉取
-        // 说明：主进程 profileUpdater �?URL �?'https://example.com/empty-subscription' �?interval �?0 时都不会触发更新
+        // å
+³é®ä¿®å¤ï¼å°è®¢é
+é¡¹å¨é
+ç½®ä¸­æ¹ä¸ºâç©ºç½å ä½âURLå¹¶ç¦ç¨èªå¨æ´æ°ï¼é¿å
+éå¯åè¢«éæ°æå
+        // è¯´æï¼ä¸»è¿ç¨ profileUpdater å?URL ä¸?'https://example.com/empty-subscription' æ?interval ä¸?0 æ¶é½ä¸ä¼è§¦åæ´æ°
         try {
           const currentItem = await window.electron.ipcRenderer.invoke('getProfileItem', USER_SUBSCRIPTION_ID)
           if (currentItem) {
@@ -691,51 +732,76 @@ const UserCenter: React.FC = () => {
             await window.electron.ipcRenderer.invoke('updateProfileItem', patchedItem)
           }
         } catch (e) {
-          console.warn('更新用户订阅占位状态失败（将继续清理本地文件）:', e)
+          console.warn('æ´æ°ç¨æ·è®¢é
+å ä½ç¶æå¤±è´¥ï¼å°ç»§ç»­æ¸
+çæ¬å°æä»¶ï¼:', e)
         }
 
-        // 同步将本地配置文件重置为空白（即使随后删除文件，也可立即生效为干净配置�?        await window.electron.ipcRenderer.invoke('setProfileStr', USER_SUBSCRIPTION_ID, `# 空白订阅配置
-# 退出登录后的默认配置，包含基本结构但无具体代理内容
+        // åæ­¥å°æ¬å°é
+ç½®æä»¶éç½®ä¸ºç©ºç½ï¼å³ä½¿éåå é¤æä»¶ï¼ä¹å¯ç«å³çæä¸ºå¹²åé
+ç½®ï¼?        await window.electron.ipcRenderer.invoke('setProfileStr', USER_SUBSCRIPTION_ID, `# ç©ºç½è®¢é
+é
+ç½®
+# éåºç»å½åçé»è®¤é
+ç½®ï¼å
+å«åºæ¬ç»æä½æ å
+·ä½ä»£çå
+å®¹
 
 proxies:
-  # 无代理配�?
+  # æ ä»£çé
+ç½?
 proxy-groups:
-  # 无代理组配置
+  # æ ä»£çç»é
+ç½®
 
 rules:
-  # 无规则配�?  - MATCH,DIRECT
+  # æ è§åé
+ç½?  - MATCH,DIRECT
 `)
         
-        // 强制删除AppData中的用户订阅文件
+        // å¼ºå¶å é¤AppDataä¸­çç¨æ·è®¢é
+æä»¶
         try {
           await window.electron.ipcRenderer.invoke('removeProfileFile', USER_SUBSCRIPTION_ID)
-          console.log('AppData中的用户订阅文件已删�?)
+          console.log('AppDataä¸­çç¨æ·è®¢é
+æä»¶å·²å é?)
         } catch (fileError) {
-          console.warn('删除AppData中的用户订阅文件失败:', fileError)
+          console.warn('å é¤AppDataä¸­çç¨æ·è®¢é
+æä»¶å¤±è´¥:', fileError)
         }
 
-        console.log('用户订阅内容已清空为默认配置')
+        console.log('ç¨æ·è®¢é
+å
+å®¹å·²æ¸
+ç©ºä¸ºé»è®¤é
+ç½®')
       } catch (error) {
-        console.error('清空用户订阅内容失败:', error)
+        console.error('æ¸
+ç©ºç¨æ·è®¢é
+å
+å®¹å¤±è´¥:', error)
       }
     }).catch(console.error)
   }
 
-  // 初始�?  useEffect(() => {
+  // åå§å?  useEffect(() => {
     // Initialize backend list
     initializeBackendList()
     
-    // 检查并加载保存的token
+    // æ£æ¥å¹¶å è½½ä¿å­çtoken
     const token = tokenManager.getToken()
     if (token) {
       setIsLoggedIn(true)
       fetchUserInfo()
       fetchAnnouncements()
     } else {
-      // 未登录状态，自动测试服务器连�?      testServerConnection()
+      // æªç»å½ç¶æï¼èªå¨æµè¯æå¡å¨è¿æ?      testServerConnection()
     }
     
-    // 自动填充上次登录的邮�?    const savedEmail = localStorage.getItem('userEmail')
+    // èªå¨å¡«å
+
+ä¸æ¬¡ç»å½çé®ç®?    const savedEmail = localStorage.getItem('userEmail')
     if (savedEmail && !email) {
       setEmail(savedEmail)
     }
@@ -750,7 +816,7 @@ rules:
   useEffect(() => {
     if (!isLoggedIn && backends.length > 0 && !hasStartedAutoTest.current) {
       hasStartedAutoTest.current = true
-      console.log('Starting auto-test for backends...') // 调试信息
+      console.log('Starting auto-test for backends...') // è°è¯ä¿¡æ¯
       
       // Clear any existing timers
       if (intervalRef.current) {
@@ -760,7 +826,7 @@ rules:
       
       // Initial test after 1 second
       const initialTimer = setTimeout(() => {
-        console.log('Initial backend test after 1 second...') // 调试信息
+        console.log('Initial backend test after 1 second...') // è°è¯ä¿¡æ¯
         const currentBackends = backendsRef.current
         // Only test latency automatically; do not auto-switch backends
         if (currentBackends.length >= 1) {
@@ -770,7 +836,7 @@ rules:
       
       // Then test every 10 seconds
       intervalRef.current = setInterval(() => {
-        console.log('Auto-testing backends every 10 seconds...') // 调试信息
+        console.log('Auto-testing backends every 10 seconds...') // è°è¯ä¿¡æ¯
         const currentBackends = backendsRef.current
         // Only test latency automatically; do not auto-switch backends
         if (currentBackends.length >= 1) {
@@ -795,9 +861,9 @@ rules:
         intervalRef.current = null
       }
     }
-  }, [isLoggedIn, backends.length]) // 依赖于登录状态和后端数量
+  }, [isLoggedIn, backends.length]) // ä¾èµäºç»å½ç¶æååç«¯æ°é
 
-  // Token过期检查和提醒
+  // Tokenè¿ææ£æ¥åæé
   useEffect(() => {
     if (!isLoggedIn) return
 
@@ -807,28 +873,28 @@ rules:
         if (remainingDays > 0) {
           setErrors(prev => ({ 
             ...prev, 
-            userInfo: `登录将在${remainingDays}天后过期，请及时重新登录` 
+            userInfo: `ç»å½å°å¨${remainingDays}å¤©åè¿æï¼è¯·åæ¶éæ°ç»å½` 
           }))
         }
       }
     }
 
-    // 立即检查一�?    checkTokenExpiration()
+    // ç«å³æ£æ¥ä¸æ¬?    checkTokenExpiration()
     
-    // 每小时检查一�?    const tokenCheckInterval = setInterval(checkTokenExpiration, 60 * 60 * 1000)
+    // æ¯å°æ¶æ£æ¥ä¸æ¬?    const tokenCheckInterval = setInterval(checkTokenExpiration, 60 * 60 * 1000)
     
     return () => {
       clearInterval(tokenCheckInterval)
     }
   }, [isLoggedIn])
 
-  // 网络状态监�?  useEffect(() => {
+  // ç½ç»ç¶æçå?  useEffect(() => {
     const handleOnline = () => {
       setNetworkStatus({
         isOnline: true,
         lastConnected: new Date()
       })
-      // 移除自动刷新，让用户手动点击刷新
+      // ç§»é¤èªå¨å·æ°ï¼è®©ç¨æ·æå¨ç¹å»å·æ°
     }
 
     const handleOffline = () => {
@@ -842,9 +908,10 @@ rules:
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, []) // 移除依赖，不再需要refreshAllData
+  }, []) // ç§»é¤ä¾èµï¼ä¸åéè¦refreshAllData
 
-  // 工具函数
+  // å·¥å
+·å½æ°
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B'
     const k = 1024
@@ -892,19 +959,19 @@ rules:
                   <IoPersonOutline className="text-primary text-3xl" />
                 </div>
                 <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t('userCenter.login')}</h2>
-                <p className="text-default-500 mt-2">登录以访问您的用户中�?/p>
+                <p className="text-default-500 mt-2">ç»å½ä»¥è®¿é®æ¨çç¨æ·ä¸­å¿?/p>
               </div>
             </CardHeader>
             <CardBody className="space-y-5 px-8 pb-8">
-              {/* 网络状态提�?*/}
+              {/* ç½ç»ç¶ææç¤?*/}
               {!networkStatus.isOnline && (
                 <div className="flex items-center gap-2 text-warning text-sm p-3 bg-warning/10 rounded-lg border border-warning/20">
                   <div className="w-2 h-2 rounded-full bg-warning animate-pulse"></div>
-                  <span>网络连接已断开，请检查网络连�?/span>
+                  <span>ç½ç»è¿æ¥å·²æ­å¼ï¼è¯·æ£æ¥ç½ç»è¿æ?/span>
                 </div>
               )}
               
-              {/* 登录错误提示 */}
+              {/* ç»å½éè¯¯æç¤º */}
               {errors.userInfo && (
                 <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
                   <div className="flex items-start gap-3">
@@ -919,7 +986,8 @@ rules:
                         onPress={() => setErrors(prev => ({ ...prev, userInfo: null }))}
                         className="mt-2 text-danger hover:bg-danger/10"
                       >
-                        关闭提示
+                        å
+³é­æç¤º
                       </Button>
                     </div>
                   </div>
@@ -931,7 +999,8 @@ rules:
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="请输入邮�?
+                  placeholder="è¯·è¾å
+¥é®ç®?
                   size="lg"
                   variant="bordered"
                   radius="lg"
@@ -952,7 +1021,8 @@ rules:
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="请输入密�?
+                  placeholder="è¯·è¾å
+¥å¯ç ?
                   size="lg"
                   variant="bordered"
                   radius="lg"
@@ -963,7 +1033,7 @@ rules:
                       type="button"
                       className="text-default-400 hover:text-foreground transition"
                       onClick={() => setShowPassword(v => !v)}
-                      aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                      aria-label={showPassword ? 'éèå¯ç ' : 'æ¾ç¤ºå¯ç '}
                     >
                       {showPassword ? <IoEyeOffOutline /> : <IoEyeOutline />}
                     </button>
@@ -990,17 +1060,17 @@ rules:
                 isLoading={loading.userInfo}
                 disabled={!email || !password || !networkStatus.isOnline}
               >
-                {loading.userInfo ? '登录�?..' : t('userCenter.loginButton')}
+                {loading.userInfo ? 'ç»å½ä¸?..' : t('userCenter.loginButton')}
               </Button>
               
-              {/* 服务器选择和测试（未登录也可选择，会话生效） */}
+              {/* æå¡å¨éæ©åæµè¯ï¼æªç»å½ä¹å¯éæ©ï¼ä¼è¯çæï¼ */}
               {backends.length >= 1 && (
                 <div className="text-center border-t border-default-200 pt-4">
                   <div className="space-y-4 p-4 bg-default-50 rounded-xl border border-default-200 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <IoServerOutline className="text-primary text-lg" />
-                        <label className="text-sm font-semibold text-foreground">选择后端服务�?/label>
+                        <label className="text-sm font-semibold text-foreground">éæ©åç«¯æå¡å?/label>
                       </div>
                       <Button
                         size="sm"
@@ -1012,14 +1082,14 @@ rules:
                         disabled={isTestingBackends}
                         className="text-xs min-w-fit px-3 shadow-sm"
                       >
-                        {isTestingBackends ? '测试�?..' : (backends.length > 1 ? '测试并选择最�? : '测试延迟')}
+                        {isTestingBackends ? 'æµè¯ä¸?..' : (backends.length > 1 ? 'æµè¯å¹¶éæ©æä¼? : 'æµè¯å»¶è¿')}
                       </Button>
                     </div>
                     
                     {isTestingBackends && (
                       <div className="flex items-center justify-center gap-2 text-primary text-xs">
                         <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                        <span>正在测试所有后端服务器延迟...</span>
+                        <span>æ­£å¨æµè¯ææåç«¯æå¡å¨å»¶è¿...</span>
                       </div>
                     )}
                     
@@ -1045,12 +1115,12 @@ rules:
                                 </span>
                                 {backend.isDefault && (
                                   <Chip size="sm" color="primary" variant="solid" className="text-xs">
-                                    默认
+                                    é»è®¤
                                   </Chip>
                                 )}
                                 {selectedBackend?.id === backend.id && (
                                   <Chip size="sm" color="secondary" variant="bordered" className="text-xs">
-                                    当前选择
+                                    å½åéæ©
                                   </Chip>
                                 )}
                                 {selectedBackend?.id === backend.id && (
@@ -1066,7 +1136,7 @@ rules:
                                     <div className={`w-1.5 h-1.5 rounded-full ${
                                       backend.isActive ? 'bg-success' : 'bg-danger'
                                     }`}></div>
-                                    {backend.isActive ? '在线' : '离线'}
+                                    {backend.isActive ? 'å¨çº¿' : 'ç¦»çº¿'}
                                   </div>
                                 )}
                                 {backend.lastPing && (
@@ -1078,15 +1148,16 @@ rules:
                                       backend.lastPing < 300 ? 'bg-success' : 
                                       backend.lastPing < 1000 ? 'bg-warning' : 'bg-danger'
                                     }`}></div>
-                                    {backend.lastPing < 100 ? '极快' : 
-                                     backend.lastPing < 300 ? '很快' : 
-                                     backend.lastPing < 1000 ? '良好' : '较慢'} 
+                                    {backend.lastPing < 100 ? 'æå¿«' : 
+                                     backend.lastPing < 300 ? 'å¾å¿«' : 
+                                     backend.lastPing < 1000 ? 'è¯å¥½' : 'è¾æ
+¢'} 
                                     ({backend.lastPing}ms)
                                   </div>
                                 )}
                                 {!backend.lastPing && !isTestingBackends && (
                                   <div className="text-xs text-default-400">
-                                    未测�?                                  </div>
+                                    æªæµè¯?                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1097,8 +1168,8 @@ rules:
                     
                     <div className="text-xs text-default-500 text-center">
                       {backends.length > 1 ? 
-                        '�?0秒自动测试延迟，不会自动切换' : 
-                        '�?0秒自动测试服务器连接状�?
+                        'æ¯?0ç§èªå¨æµè¯å»¶è¿ï¼ä¸ä¼èªå¨åæ¢' : 
+                        'æ¯?0ç§èªå¨æµè¯æå¡å¨è¿æ¥ç¶æ?
                       }
                     </div>
                   </div>
@@ -1114,25 +1185,26 @@ rules:
   return (
     <BasePage title={t('userCenter.title')}>
       <div className="space-y-6">
-        {/* 网络状态提�?*/}
+        {/* ç½ç»ç¶ææç¤?*/}
         {!networkStatus.isOnline && (
           <Card className="border-warning">
             <CardBody className="py-3">
               <div className="flex items-center gap-2 text-warning">
                 <div className="w-2 h-2 rounded-full bg-warning animate-pulse"></div>
-                <span className="text-sm">网络连接已断开，数据可能不是最新的</span>
+                <span className="text-sm">ç½ç»è¿æ¥å·²æ­å¼ï¼æ°æ®å¯è½ä¸æ¯ææ°ç</span>
               </div>
             </CardBody>
           </Card>
         )}
-        {/* 顶部操作区：刷新 / 退出登�?*/}
+        {/* é¡¶é¨æä½åºï¼å·æ° / éåºç»å½?*/}
         <div className="flex justify-end gap-2">
           <Button variant="light" size="sm" onPress={handleLogout} color="danger">
             {t('userCenter.logout')}
           </Button>
         </div>
 
-        {/* 公告模块 —�?列表展示 */}
+        {/* å
+¬åæ¨¡å ââ?åè¡¨å±ç¤º */}
         <Card>
           <CardHeader className="flex justify-between">
             <h3 className="text-lg font-semibold">{t('userCenter.announcements')}</h3>
@@ -1144,7 +1216,7 @@ rules:
             {errors.announcements ? (
               <div className="text-center py-8">
                 <div className="text-danger mb-2">
-                  <p>加载失败: {errors.announcements}</p>
+                  <p>å è½½å¤±è´¥: {errors.announcements}</p>
                 </div>
                 <div className="flex justify-center gap-2">
                   <Button 
@@ -1153,14 +1225,15 @@ rules:
                     onPress={() => fetchAnnouncements(true)}
                     isLoading={loading.announcements}
                   >
-                    重试
+                    éè¯
                   </Button>
                   <Button 
                     variant="light" 
                     size="sm" 
                     onPress={() => setErrors(prev => ({ ...prev, announcements: null }))}
                   >
-                    关闭错误
+                    å
+³é­éè¯¯
                   </Button>
                 </div>
               </div>
@@ -1168,7 +1241,8 @@ rules:
               <div className="flex justify-center py-8">
                 <div className="flex flex-col items-center gap-2">
                   <Spinner />
-                  <p className="text-sm text-default-500">加载公告�?..</p>
+                  <p className="text-sm text-default-500">å è½½å
+¬åä¸?..</p>
                 </div>
               </div>
             ) : announcements.length > 0 ? (
@@ -1189,7 +1263,7 @@ rules:
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-default-400">📢</span>
+                        <span className="text-default-400">ð¢</span>
                         <span className="font-medium text-foreground truncate">
                           {announcement.title}
                         </span>
@@ -1207,15 +1281,16 @@ rules:
               <div className="text-center text-default-500 py-8">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 rounded-full bg-default-100 flex items-center justify-center">
-                    <span className="text-default-400">📢</span>
+                    <span className="text-default-400">ð¢</span>
                   </div>
-                  <p>暂无公告</p>
+                  <p>ææ å
+¬å</p>
                   <Button 
                     variant="light" 
                     size="sm" 
                     onPress={() => fetchAnnouncements(true)}
                   >
-                    刷新试试
+                    å·æ°è¯è¯
                   </Button>
                 </div>
               </div>
@@ -1223,7 +1298,7 @@ rules:
           </CardBody>
         </Card>
 
-        {/* 流量信息模块 */}
+        {/* æµéä¿¡æ¯æ¨¡å */}
         <Card>
           <CardHeader className="flex justify-between">
             <h3 className="text-lg font-semibold">{t('userCenter.traffic')}</h3>
@@ -1232,14 +1307,14 @@ rules:
           <CardBody>
             {errors.userInfo ? (
               <div className="text-center py-8 text-danger">
-                <p>加载失败: {errors.userInfo}</p>
+                <p>å è½½å¤±è´¥: {errors.userInfo}</p>
                 <Button 
                   variant="light" 
                   size="sm" 
                   onPress={() => fetchUserInfo(true)}
                   className="mt-2"
                 >
-                  重试
+                  éè¯
                 </Button>
               </div>
             ) : userInfo ? (
@@ -1281,7 +1356,7 @@ rules:
                 
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span>使用进度</span>
+                    <span>ä½¿ç¨è¿åº¦</span>
                     <span>{getUsagePercentage().toFixed(1)}%</span>
                   </div>
                   <Progress 
@@ -1296,7 +1371,7 @@ rules:
                     <span className="font-medium">{t('userCenter.expire')}:</span>
                     <span className={isExpiringSoon() ? 'text-warning font-medium' : 'text-foreground'}>
                       {userInfo.traffic.expire ? formatDate(userInfo.traffic.expire) : t('sider.cards.neverExpire')}
-                      {isExpiringSoon() && <span className="ml-2 text-xs">(即将过期)</span>}
+                      {isExpiringSoon() && <span className="ml-2 text-xs">(å³å°è¿æ)</span>}
                     </span>
                   </div>
                 </div>
@@ -1309,13 +1384,13 @@ rules:
           </CardBody>
         </Card>
 
-        {/* 服务器选择和测试（登录后） */}
+        {/* æå¡å¨éæ©åæµè¯ï¼ç»å½åï¼ */}
         {backends.length >= 1 && (
           <Card>
             <CardHeader className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <IoServerOutline className="text-primary text-lg" />
-                <h3 className="text-lg font-semibold">选择后端服务�?/h3>
+                <h3 className="text-lg font-semibold">éæ©åç«¯æå¡å?/h3>
               </div>
               <Button
                 size="sm"
@@ -1327,7 +1402,7 @@ rules:
                 disabled={isTestingBackends}
                 className="text-xs min-w-fit px-3 shadow-sm"
               >
-                {isTestingBackends ? '测试�?..' : (backends.length > 1 ? '测试并选择最�? : '测试延迟')}
+                {isTestingBackends ? 'æµè¯ä¸?..' : (backends.length > 1 ? 'æµè¯å¹¶éæ©æä¼? : 'æµè¯å»¶è¿')}
               </Button>
             </CardHeader>
             <Divider />
@@ -1335,7 +1410,7 @@ rules:
               {isTestingBackends && (
                 <div className="flex items-center justify-center gap-2 text-primary text-xs mb-2">
                   <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                  <span>正在测试所有后端服务器延迟...</span>
+                  <span>æ­£å¨æµè¯ææåç«¯æå¡å¨å»¶è¿...</span>
                 </div>
               )}
 
@@ -1361,12 +1436,12 @@ rules:
                           </span>
                           {backend.isDefault && (
                             <Chip size="sm" color="primary" variant="solid" className="text-xs">
-                              默认
+                              é»è®¤
                             </Chip>
                           )}
                           {selectedBackend?.id === backend.id && (
                             <Chip size="sm" color="secondary" variant="bordered" className="text-xs">
-                              当前选择
+                              å½åéæ©
                             </Chip>
                           )}
                           {selectedBackend?.id === backend.id && (
@@ -1382,7 +1457,7 @@ rules:
                               <div className={`w-1.5 h-1.5 rounded-full ${
                                 backend.isActive ? 'bg-success' : 'bg-danger'
                               }`}></div>
-                              {backend.isActive ? '在线' : '离线'}
+                              {backend.isActive ? 'å¨çº¿' : 'ç¦»çº¿'}
                             </div>
                           )}
                           {backend.lastPing && (
@@ -1394,15 +1469,16 @@ rules:
                                 backend.lastPing < 300 ? 'bg-success' : 
                                 backend.lastPing < 1000 ? 'bg-warning' : 'bg-danger'
                               }`}></div>
-                              {backend.lastPing < 100 ? '极快' : 
-                               backend.lastPing < 300 ? '很快' : 
-                               backend.lastPing < 1000 ? '良好' : '较慢'} 
+                              {backend.lastPing < 100 ? 'æå¿«' : 
+                               backend.lastPing < 300 ? 'å¾å¿«' : 
+                               backend.lastPing < 1000 ? 'è¯å¥½' : 'è¾æ
+¢'} 
                               ({backend.lastPing}ms)
                             </div>
                           )}
                           {!backend.lastPing && !isTestingBackends && (
                             <div className="text-xs text-default-400">
-                              未测�?                            </div>
+                              æªæµè¯?                            </div>
                           )}
                         </div>
                       </div>
@@ -1412,12 +1488,14 @@ rules:
               </div>
 
               <div className="text-xs text-default-500 text-center mt-2">
-                登录状态下不会自动切换后端，可手动测试或选择最�?              </div>
+                ç»å½ç¶æä¸ä¸ä¼èªå¨åæ¢åç«¯ï¼å¯æå¨æµè¯æéæ©æä¼?              </div>
             </CardBody>
           </Card>
         )}
 
-        {/* 公告详情模态框 */}
+        {/* å
+¬åè¯¦æ
+æ¨¡ææ¡ */}
         <Modal 
           isOpen={isModalOpen} 
           onOpenChange={setIsModalOpen}

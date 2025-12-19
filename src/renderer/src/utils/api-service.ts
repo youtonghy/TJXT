@@ -244,7 +244,7 @@ export class ApiService {
 
   /**
    * User login
-   * POST /api/v1/passport/auth/login
+   * POST /api/v3/passport/auth/login
    */
   async login(email: string, password: string, options?: {
     recaptcha_data?: string
@@ -256,7 +256,7 @@ export class ApiService {
     if (options?.recaptcha_data) body.set('recaptcha_data', options.recaptcha_data)
     if (options?.turnstile_token) body.set('turnstile_token', options.turnstile_token)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/passport/auth/login`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/passport/auth/login`, {
       method: 'POST',
       headers: this.getHeaders(false, 'form'),
       body: body.toString()
@@ -267,7 +267,7 @@ export class ApiService {
 
   /**
    * Send email verification code
-   * POST /api/v1/passport/comm/sendEmailVerify
+   * POST /api/v3/passport/comm/sendEmailVerify
    */
   async sendEmailVerify(email: string, isForget: boolean = false, options?: {
     recaptcha_data?: string
@@ -279,7 +279,7 @@ export class ApiService {
     if (options?.recaptcha_data) body.set('recaptcha_data', options.recaptcha_data)
     if (options?.turnstile_token) body.set('turnstile_token', options.turnstile_token)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/passport/comm/sendEmailVerify`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/passport/comm/sendEmailVerify`, {
       method: 'POST',
       headers: this.getHeaders(false, 'form'),
       body: body.toString()
@@ -292,10 +292,10 @@ export class ApiService {
 
   /**
    * Get user info
-   * GET /api/v1/user/info
+   * GET /api/v3/user/info
    */
   async getUserInfo(): Promise<UserInfo> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/info`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/info`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -305,10 +305,10 @@ export class ApiService {
 
   /**
    * Get subscription info
-   * GET /api/v1/user/getSubscribe
+   * GET /api/v3/user/getSubscribe
    */
   async getSubscribe(): Promise<SubscribeInfo> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/getSubscribe`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/getSubscribe`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -318,10 +318,10 @@ export class ApiService {
 
   /**
    * Get user statistics [pending orders, pending tickets, invited users]
-   * GET /api/v1/user/getStat
+   * GET /api/v3/user/getStat
    */
   async getUserStat(): Promise<[number, number, number]> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/getStat`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/getStat`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -331,10 +331,10 @@ export class ApiService {
 
   /**
    * Check login status
-   * GET /api/v1/user/checkLogin
+   * GET /api/v3/user/checkLogin
    */
   async checkLogin(): Promise<{ is_login: boolean; is_admin: boolean }> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/checkLogin`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/checkLogin`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -344,13 +344,13 @@ export class ApiService {
 
   /**
    * Redeem gift card
-   * POST /api/v1/user/redeemgiftcard
+   * POST /api/v3/user/redeemgiftcard
    */
   async redeemGiftCard(giftcard: string): Promise<GiftCardRedeemResult> {
     const body = new URLSearchParams()
     body.set('giftcard', giftcard)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/redeemgiftcard`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/redeemgiftcard`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -368,7 +368,7 @@ export class ApiService {
 
   /**
    * Get notices
-   * GET /api/v1/user/notice/fetch
+   * GET /api/v3/user/notice/fetch
    */
   async getNotices(options?: { id?: number; current?: number; pageSize?: number }): Promise<{ data: Notice[]; total: number }> {
     const params = new URLSearchParams()
@@ -376,7 +376,7 @@ export class ApiService {
     if (options?.current) params.set('current', String(options.current))
     if (options?.pageSize) params.set('pageSize', String(options.pageSize))
 
-    const url = `${this.baseUrl}/api/v1/user/notice/fetch${params.toString() ? `?${params.toString()}` : ''}`
+    const url = `${this.baseUrl}/api/v3/user/notice/fetch${params.toString() ? `?${params.toString()}` : ''}`
     const response = await fetch(url, {
       method: 'GET',
       headers: this.getHeaders(true)
@@ -400,12 +400,12 @@ export class ApiService {
 
   /**
    * Get plans
-   * GET /api/v1/user/plan/fetch
+   * GET /api/v3/user/plan/fetch
    */
   async getPlans(id?: number): Promise<Plan[]> {
     const url = id
-      ? `${this.baseUrl}/api/v1/user/plan/fetch?id=${encodeURIComponent(id)}`
-      : `${this.baseUrl}/api/v1/user/plan/fetch`
+      ? `${this.baseUrl}/api/v3/user/plan/fetch?id=${encodeURIComponent(id)}`
+      : `${this.baseUrl}/api/v3/user/plan/fetch`
 
     const response = await fetch(url, {
       method: 'GET',
@@ -419,12 +419,12 @@ export class ApiService {
 
   /**
    * Get orders
-   * GET /api/v1/user/order/fetch
+   * GET /api/v3/user/order/fetch
    */
   async getOrders(status?: number): Promise<OrderDetail[]> {
     const url = status !== undefined
-      ? `${this.baseUrl}/api/v1/user/order/fetch?status=${encodeURIComponent(status)}`
-      : `${this.baseUrl}/api/v1/user/order/fetch`
+      ? `${this.baseUrl}/api/v3/user/order/fetch?status=${encodeURIComponent(status)}`
+      : `${this.baseUrl}/api/v3/user/order/fetch`
 
     const response = await fetch(url, {
       method: 'GET',
@@ -436,11 +436,11 @@ export class ApiService {
 
   /**
    * Get order detail
-   * GET /api/v1/user/order/detail
+   * GET /api/v3/user/order/detail
    */
   async getOrderDetail(tradeNo: string): Promise<OrderDetail> {
     const response = await fetch(
-      `${this.baseUrl}/api/v1/user/order/detail?trade_no=${encodeURIComponent(tradeNo)}`,
+      `${this.baseUrl}/api/v3/user/order/detail?trade_no=${encodeURIComponent(tradeNo)}`,
       {
         method: 'GET',
         headers: this.getHeaders(true)
@@ -452,7 +452,7 @@ export class ApiService {
 
   /**
    * Create order
-   * POST /api/v1/user/order/save
+   * POST /api/v3/user/order/save
    */
   async createOrder(options: {
     plan_id: number
@@ -466,7 +466,7 @@ export class ApiService {
     if (options.coupon_code) body.set('coupon_code', options.coupon_code)
     if (options.deposit_amount !== undefined) body.set('deposit_amount', String(options.deposit_amount))
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/order/save`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/order/save`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -477,7 +477,7 @@ export class ApiService {
 
   /**
    * Checkout order
-   * POST /api/v1/user/order/checkout
+   * POST /api/v3/user/order/checkout
    */
   async checkoutOrder(tradeNo: string, method: number, token?: string): Promise<{ type: number; data: string | boolean }> {
     const body = new URLSearchParams()
@@ -485,7 +485,7 @@ export class ApiService {
     body.set('method', String(method))
     if (token) body.set('token', token)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/order/checkout`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/order/checkout`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -500,11 +500,11 @@ export class ApiService {
 
   /**
    * Check order status
-   * GET /api/v1/user/order/check
+   * GET /api/v3/user/order/check
    */
   async checkOrderStatus(tradeNo: string): Promise<number> {
     const response = await fetch(
-      `${this.baseUrl}/api/v1/user/order/check?trade_no=${encodeURIComponent(tradeNo)}`,
+      `${this.baseUrl}/api/v3/user/order/check?trade_no=${encodeURIComponent(tradeNo)}`,
       {
         method: 'GET',
         headers: this.getHeaders(true)
@@ -516,13 +516,13 @@ export class ApiService {
 
   /**
    * Cancel order
-   * POST /api/v1/user/order/cancel
+   * POST /api/v3/user/order/cancel
    */
   async cancelOrder(tradeNo: string): Promise<boolean> {
     const body = new URLSearchParams()
     body.set('trade_no', tradeNo)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/order/cancel`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/order/cancel`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -533,10 +533,10 @@ export class ApiService {
 
   /**
    * Get payment methods
-   * GET /api/v1/user/order/getPaymentMethod
+   * GET /api/v3/user/order/getPaymentMethod
    */
   async getPaymentMethods(): Promise<PaymentMethod[]> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/order/getPaymentMethod`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/order/getPaymentMethod`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -548,14 +548,14 @@ export class ApiService {
 
   /**
    * Check coupon
-   * POST /api/v1/user/coupon/check
+   * POST /api/v3/user/coupon/check
    */
   async checkCoupon(code: string, planId?: number): Promise<Coupon> {
     const body = new URLSearchParams()
     body.set('code', code)
     if (planId !== undefined) body.set('plan_id', String(planId))
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/coupon/check`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/coupon/check`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -568,10 +568,10 @@ export class ApiService {
 
   /**
    * Get tickets
-   * GET /api/v1/user/ticket/fetch
+   * GET /api/v3/user/ticket/fetch
    */
   async getTickets(): Promise<TicketItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/v1/user/ticket/fetch`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/fetch`, {
       method: 'GET',
       headers: this.getHeaders(true)
     })
@@ -581,11 +581,11 @@ export class ApiService {
 
   /**
    * Get ticket detail
-   * GET /api/v1/user/ticket/fetch?id=xxx
+   * GET /api/v3/user/ticket/fetch?id=xxx
    */
   async getTicketDetail(id: number): Promise<TicketDetail> {
     const response = await fetch(
-      `${this.baseUrl}/api/v1/user/ticket/fetch?id=${encodeURIComponent(id)}`,
+      `${this.baseUrl}/api/v3/user/ticket/fetch?id=${encodeURIComponent(id)}`,
       {
         method: 'GET',
         headers: this.getHeaders(true)
@@ -597,7 +597,7 @@ export class ApiService {
 
   /**
    * Create ticket
-   * POST /api/v1/user/ticket/save
+   * POST /api/v3/user/ticket/save
    */
   async createTicket(subject: string, level: number, message: string): Promise<boolean> {
     const body = new URLSearchParams()
@@ -605,7 +605,7 @@ export class ApiService {
     body.set('level', String(level))
     body.set('message', message)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/ticket/save`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/save`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -616,14 +616,14 @@ export class ApiService {
 
   /**
    * Reply to ticket
-   * POST /api/v1/user/ticket/reply
+   * POST /api/v3/user/ticket/reply
    */
   async replyTicket(id: number, message: string): Promise<boolean> {
     const body = new URLSearchParams()
     body.set('id', String(id))
     body.set('message', message)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/ticket/reply`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/reply`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -634,13 +634,13 @@ export class ApiService {
 
   /**
    * Close ticket
-   * POST /api/v1/user/ticket/close
+   * POST /api/v3/user/ticket/close
    */
   async closeTicket(id: number): Promise<boolean> {
     const body = new URLSearchParams()
     body.set('id', String(id))
 
-    const response = await fetch(`${this.baseUrl}/api/v1/user/ticket/close`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/close`, {
       method: 'POST',
       headers: this.getHeaders(true, 'form'),
       body: body.toString()
@@ -653,10 +653,10 @@ export class ApiService {
 
   /**
    * Get public config
-   * GET /api/v1/guest/comm/config
+   * GET /api/v3/guest/comm/config
    */
   async getGuestConfig(): Promise<Record<string, unknown>> {
-    const response = await fetch(`${this.baseUrl}/api/v1/guest/comm/config`, {
+    const response = await fetch(`${this.baseUrl}/api/v3/guest/comm/config`, {
       method: 'GET',
       headers: this.getHeaders(false)
     })
@@ -674,7 +674,7 @@ export class ApiService {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-      const response = await fetch(`${this.baseUrl}/api/v1/guest/comm/config`, {
+      const response = await fetch(`${this.baseUrl}/api/v3/guest/comm/config`, {
         method: 'GET',
         headers: this.getHeaders(false),
         signal: controller.signal

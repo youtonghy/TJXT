@@ -11,7 +11,7 @@ export interface UserTokenData {
 /**
  * Create user auth utils with app config
  */
-import { getActiveBackend } from '@renderer/utils/user-center-backend'
+import { getActiveBackend, getBackendApiBaseUrl } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 
 export const createUserAuthUtils = (appConfig?: IAppConfig) => {
@@ -73,10 +73,10 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
       const token = utils.getToken()
       if (!token) return null
       
-      const loginUrl = utils.getLoginUrl()
+      const apiBaseUrl = utils.getApiBaseUrl()
       
       try {
-        const response = await fetch(`${loginUrl}/api/v1/user/getSubscribe`, {
+        const response = await fetch(`${apiBaseUrl}/user/getSubscribe`, {
           headers: {
             'Authorization': token,
             'Content-Type': 'application/json',
@@ -131,6 +131,11 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
       // Use the active backend (session selection > default)
       const backend = getActiveBackend(appConfig)
       return backend.url
+    },
+
+    getApiBaseUrl: (): string => {
+      const backend = getActiveBackend(appConfig)
+      return getBackendApiBaseUrl(backend)
     }
   }
 

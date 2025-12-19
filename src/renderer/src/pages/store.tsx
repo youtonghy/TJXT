@@ -4,7 +4,8 @@ import { Button, Card, CardBody, CardFooter, CardHeader, Divider, Input, Modal, 
 import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
-import { getActiveBackend } from '@renderer/utils/user-center-backend'
+import { getActiveBackendApiBaseUrl } from '@renderer/utils/user-center-backend'
+import { API_USER_AGENT } from '@renderer/utils/api-service'
 import dayjs from '@renderer/utils/dayjs'
 import { IoCheckmark, IoChevronBack, IoChevronForward } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
@@ -101,7 +102,7 @@ const Store: React.FC = () => {
   const navigate = useNavigate()
   const { appConfig } = useAppConfig()
   const auth = useMemo(() => createUserAuthUtils(appConfig), [appConfig])
-  const baseUrl = useMemo(() => getActiveBackend(appConfig).url, [appConfig])
+  const apiBaseUrl = useMemo(() => getActiveBackendApiBaseUrl(appConfig), [appConfig])
 
   const [loading, setLoading] = useState(false)
   const [plans, setPlans] = useState<Plan[]>([])
@@ -173,7 +174,7 @@ const Store: React.FC = () => {
   // Helpers
   const authHeaders = useCallback((): HeadersInit => {
     const token = auth.getToken()
-    return { 'Authorization': token || '', 'Content-Type': 'application/x-www-form-urlencoded' }
+    return { 'Authorization': token || '', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': API_USER_AGENT }
   }, [auth])
 
   const showErrorBanner = useCallback((raw: string) => {
@@ -206,7 +207,7 @@ const Store: React.FC = () => {
     try {
       const body = new URLSearchParams()
       body.set('trade_no', tradeNo)
-      const res = await fetch(`${baseUrl}/api/v1/user/order/cancel`, {
+      const res = await fetch(`${apiBaseUrl}/user/order/cancel`, {
         method: 'POST',
         headers: authHeaders(),
         body: body.toString()
@@ -222,7 +223,7 @@ const Store: React.FC = () => {
       setTradeNo(null)
       setPhase('select')
     }
-  }, [authHeaders, baseUrl, tradeNo])
+  }, [authHeaders, apiBaseUrl, tradeNo])
 
   const redeemGiftcard = async (): Promise<void> => {
     const code = redeemCode.trim()
@@ -233,7 +234,7 @@ const Store: React.FC = () => {
     try {
       const body = new URLSearchParams()
       body.set('giftcard', code)
-      const res = await fetch(`${baseUrl}/api/v1/user/redeemgiftcard`, {
+      const res = await fetch(`${apiBaseUrl}/user/redeemgiftcard`, {
         method: 'POST',
         headers: authHeaders(),
         body: body.toString()
@@ -276,7 +277,7 @@ const Store: React.FC = () => {
 
   useEffect(() => {
     if (!auth.isLoggedIn()) {
-      try { new Notification(t('store.loginRequired') || '璇峰厛鐧诲綍') } catch {}
+      try { new Notification(t('store.loginRequired') || '请先登录') } catch {}
       navigate('/user-center', { replace: true })
       return
     }
@@ -284,7 +285,7 @@ const Store: React.FC = () => {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${baseUrl}/api/v1/user/plan/fetch`, { headers: { Authorization: auth.getToken() || '' } })
+        const res = await fetch(`${apiBaseUrl}/user/plan/fetch`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } })
         if (res.status === 401) {
           navigate('/user-center', { replace: true })
           return
@@ -298,7 +299,7 @@ const Store: React.FC = () => {
       }
     }
     fetchPlans()
-  }, [auth, baseUrl, navigate, t])
+  }, [auth, apiBaseUrl, navigate, t])
 
   useEffect(() => {
     // Update arrow controls after plans render
@@ -324,7 +325,7 @@ const Store: React.FC = () => {
     try {
       const body = new URLSearchParams()
       body.set('code', coupon.trim())
-      const res = await fetch(`${baseUrl}/api/v1/user/coupon/check`, {
+      const res = await fetch(`${apiBaseUrl}/user/coupon/check`, {
         method: 'POST',
         headers: authHeaders(),
         body: body.toString()
@@ -364,7 +365,7 @@ const Store: React.FC = () => {
       body.set('period', selectedPeriod)
       body.set('plan_id', String(currentPlan.id))
       if (coupon.trim()) body.set('coupon', coupon.trim())
-      const res = await fetch(`${baseUrl}/api/v1/user/order/save`, {
+      const res = await fetch(`${apiBaseUrl}/user/order/save`, {
         method: 'POST',
         headers: authHeaders(),
         body: body.toString()
@@ -391,8 +392,8 @@ const Store: React.FC = () => {
   const loadPaymentData = async (tn: string): Promise<void> => {
     try {
       const [detailRes, pmRes] = await Promise.all([
-        fetch(`${baseUrl}/api/v1/user/order/detail?trade_no=${encodeURIComponent(tn)}`, { headers: { Authorization: auth.getToken() || '' } }),
-        fetch(`${baseUrl}/api/v1/user/order/getPaymentMethod`, { headers: { Authorization: auth.getToken() || '' } })
+        fetch(`${apiBaseUrl}/user/order/detail?trade_no=${encodeURIComponent(tn)}`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } }),
+        fetch(`${apiBaseUrl}/user/order/getPaymentMethod`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } })
       ])
       if (detailRes.status >= 500) { const text = await detailRes.text().catch(() => ''); showErrorBanner(text) }
       if (pmRes.status >= 500) { const text = await pmRes.text().catch(() => ''); showErrorBanner(text) }
@@ -412,7 +413,7 @@ const Store: React.FC = () => {
       body.set('trade_no', tradeNo)
       if (methodId != null) body.set('payment_id', String(methodId))
 
-      const res = await fetch(`${baseUrl}/api/v1/user/order/checkout`, {
+      const res = await fetch(`${apiBaseUrl}/user/order/checkout`, {
         method: 'POST',
         headers: authHeaders(),
         body: body.toString()

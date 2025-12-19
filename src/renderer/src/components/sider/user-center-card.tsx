@@ -60,8 +60,8 @@ const UserCenterCard: React.FC<Props> = (props) => {
         const token = authUtils.getToken()
         if (!token) return
 
-        const loginUrl = authUtils.getLoginUrl()
-        const resp = await fetch(`${loginUrl}/api/v1/user/getSubscribe`, {
+        const apiBaseUrl = authUtils.getApiBaseUrl()
+        const resp = await fetch(`${apiBaseUrl}/user/getSubscribe`, {
           headers: {
             'Authorization': token,
             'Content-Type': 'application/json',

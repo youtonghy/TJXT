@@ -1,0 +1,21 @@
+[
+  {
+    "id": "default",
+    "name": "默认后端",
+    "url": "https://tjxt.tksk.space",
+    "apiVersion": "v3",
+    "isDefault": true
+  },
+  {
+    "id": "mainland",
+    "name": "大陆后端",
+    "url": "https://ppb.200461.xyz",
+    "apiVersion": "v3"
+  },
+  {
+    "id": "backup",
+    "name": "备用后端",
+    "url": "https://[2a14:67c1:a072:1::3d]:59847",
+    "apiVersion": "v3"
+  }
+]

@@ -219,8 +219,9 @@ interface IUserCenterBackend {
   id: string
   name: string
   url: string
-  isDefault?: boolean
-  lastPing?: number
+  apiVersion?: 'v1' | 'v3'
+  isDefault: boolean
+  lastPing?: number | null
   lastTest?: number
   isActive?: boolean
 }
