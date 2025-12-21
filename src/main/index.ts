@@ -257,10 +257,20 @@ async function handleDeepLink(url: string): Promise<void> {
         urlObj.searchParams.get('access_token') ??
         urlObj.searchParams.get('accessToken') ??
         urlObj.searchParams.get('token')
+      const tokenType =
+        urlObj.searchParams.get('token_type') ??
+        urlObj.searchParams.get('tokenType')
       const error = urlObj.searchParams.get('error')
       const state = urlObj.searchParams.get('state')
+      console.info('[DeepLink] user-center-login', {
+        hasToken: Boolean(accessToken),
+        tokenType: tokenType || null,
+        error: error || null,
+        state: state || null
+      })
       mainWindow?.webContents.send('userCenterLogin', {
         accessToken,
+        tokenType,
         error,
         state
       })

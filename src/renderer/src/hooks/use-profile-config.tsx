@@ -23,6 +23,9 @@ interface ProfileConfigContextType {
 }
 
 const ProfileConfigContext = createContext<ProfileConfigContextType | undefined>(undefined)
+const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
+const EMPTY_SUBSCRIPTION_URL = 'https://example.com/empty-subscription'
+const LOADING_SUBSCRIPTION_URL = 'https://example.com/loading-subscription'
 
 export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { data: rawProfileConfig, mutate: mutateProfileConfig } = useSWR('getProfileConfig', () =>
@@ -62,23 +65,32 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     const userAuthUtils = createUserAuthUtils(appConfig)
     const isLoggedIn = userAuthUtils.isLoggedIn()
     
-    // Define the special user subscription item
-    const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
+    const existingUserSubscription = rawProfileConfig.items.find(
+      (item) => item.id === USER_SUBSCRIPTION_ID
+    )
+    const existingUrl = existingUserSubscription?.url
+    const isExistingPlaceholder =
+      existingUrl === EMPTY_SUBSCRIPTION_URL || existingUrl === LOADING_SUBSCRIPTION_URL
+    const resolvedUrl = isLoggedIn
+      ? (userSubscriptionUrl || (existingUrl && !isExistingPlaceholder ? existingUrl : LOADING_SUBSCRIPTION_URL))
+      : EMPTY_SUBSCRIPTION_URL
+    const existingInterval = existingUserSubscription?.interval ?? 0
+    const resolvedInterval = isLoggedIn ? (existingInterval > 0 ? existingInterval : 60) : 0
     
     // Always create user subscription item, but with different URLs based on login state
     const userSubscriptionItem: IProfileItem = {
       id: USER_SUBSCRIPTION_ID,
       type: 'remote',
-      name: '用户订阅 (Clash Meta)',
-      url: isLoggedIn
-        ? userSubscriptionUrl || 'https://example.com/loading-subscription'
-        : 'https://example.com/empty-subscription', // 空白占位URL
-      interval: 60 * 60, // 60分钟更新一次 (3600秒)
+      name: existingUserSubscription?.name || '用户订阅 (Clash Meta)',
+      url: resolvedUrl,
+      interval: resolvedInterval,
       updated: Date.now(),
-      override: [],
-      useProxy: false,
-      allowFixedInterval: false,
-      substore: false
+      override: existingUserSubscription?.override || [],
+      useProxy: existingUserSubscription?.useProxy || false,
+      allowFixedInterval: existingUserSubscription?.allowFixedInterval || false,
+      substore: existingUserSubscription?.substore || false,
+      home: existingUserSubscription?.home,
+      extra: isLoggedIn ? existingUserSubscription?.extra : undefined
     }
 
     // Check if user subscription already exists
@@ -124,12 +136,14 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   const addProfileItem = async (item: Partial<IProfileItem>): Promise<void> => {
     // If attempting to add/refresh the user subscription while it's in loading state,
     // trigger a subscription URL refresh instead.
-    if (
-      item.id === 'user-subscription-meta' &&
-      item.url === 'https://example.com/loading-subscription'
-    ) {
-      await refreshUserSubscription()
-      return
+    if (item.id === USER_SUBSCRIPTION_ID) {
+      if (item.url === LOADING_SUBSCRIPTION_URL) {
+        await refreshUserSubscription()
+        return
+      }
+      if (!item.url || item.url === EMPTY_SUBSCRIPTION_URL) {
+        return
+      }
     }
 
     try {
@@ -144,7 +158,6 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const removeProfileItem = async (id: string): Promise<void> => {
     // Prevent deletion of user subscription
-    const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
     if (id === USER_SUBSCRIPTION_ID) {
       alert('用户订阅不能被删除')
       return
@@ -220,11 +233,11 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
         try {
           // Ensure the profile exists in main config and fetch latest content
           await add({
-            id: 'user-subscription-meta',
+            id: USER_SUBSCRIPTION_ID,
             type: 'remote',
             name: '用户订阅 (Clash Meta)',
             url,
-            interval: 60 * 60,
+            interval: 60,
             override: [],
             useProxy: false,
             allowFixedInterval: false,
@@ -233,8 +246,8 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
           // After fetching, set as current if not already
           try {
-            if (rawProfileConfig?.current !== 'user-subscription-meta') {
-              await change('user-subscription-meta')
+            if (rawProfileConfig?.current !== USER_SUBSCRIPTION_ID) {
+              await change(USER_SUBSCRIPTION_ID)
             }
           } catch (e) {
             console.warn('Auto-select user subscription as current failed:', e)

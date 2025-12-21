@@ -58,8 +58,8 @@ const UserCenterCard: React.FC<Props> = (props) => {
 
         setLoggedIn(true)
 
-        const token = authUtils.getToken()
-        if (!token) return
+        const authHeader = authUtils.getAuthHeaderValue()
+        if (!authHeader) return
 
         const baseUrl = authUtils.getBaseUrl()
         const resp = await callV3Gateway(
@@ -68,7 +68,7 @@ const UserCenterCard: React.FC<Props> = (props) => {
           'GET',
           undefined,
           {
-            'Authorization': token,
+            'Authorization': authHeader,
             'User-Agent': API_USER_AGENT
           }
         )

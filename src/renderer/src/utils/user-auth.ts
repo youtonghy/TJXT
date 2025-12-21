@@ -6,15 +6,57 @@ export interface UserTokenData {
   token: string
   expiresAt: number
   createdAt: number
+  tokenType?: string
 }
 
 /**
  * Create user auth utils with app config
  */
-import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
+import { getActiveBackend, callV3Gateway, normalizeBackendUrl } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 
 export const createUserAuthUtils = (appConfig?: IAppConfig) => {
+  const debugEnabled = (): boolean => {
+    try {
+      return localStorage.getItem('userCenter.debug') === '1'
+    } catch {
+      return false
+    }
+  }
+  const logDebug = (...args: unknown[]): void => {
+    if (debugEnabled()) {
+      console.info('[UserAuth]', ...args)
+    }
+  }
+  const maskUrl = (raw?: string | null): string | null => {
+    if (!raw) return null
+    try {
+      const url = new URL(raw)
+      const keys = ['token', 'access_token', 'accessToken', 'auth_data', 'authData']
+      keys.forEach((key) => {
+        if (url.searchParams.has(key)) {
+          url.searchParams.set(key, '***')
+        }
+      })
+      return url.toString()
+    } catch {
+      return raw
+    }
+  }
+  const normalizeTokenType = (value?: string | null): string | null => {
+    if (!value) return null
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+
+  const formatAuthToken = (token: string, tokenType?: string | null): string => {
+    if (/\s/.test(token)) return token
+    const normalizedType = normalizeTokenType(tokenType)
+    if (!normalizedType) return token
+    if (normalizedType.toLowerCase() === 'bearer') return token
+    return `${normalizedType} ${token}`
+  }
+
   const utils = {
     /**
      * Check if user is currently logged in (has valid token)
@@ -57,6 +99,29 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
     },
 
     /**
+     * Get token type if present
+     */
+    getTokenType: (): string | null => {
+      const tokenDataStr = localStorage.getItem('userTokenData')
+      if (!tokenDataStr) return null
+      try {
+        const tokenData: UserTokenData = JSON.parse(tokenDataStr)
+        return normalizeTokenType(tokenData.tokenType)
+      } catch {
+        return null
+      }
+    },
+
+    /**
+     * Build Authorization header value with token type when available
+     */
+    getAuthHeaderValue: (): string | null => {
+      const token = utils.getToken()
+      if (!token) return null
+      return formatAuthToken(token, utils.getTokenType())
+    },
+
+    /**
      * Clear stored auth token
      */
     clearToken: (): void => {
@@ -70,10 +135,14 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
      * Uses the same method as user-center.tsx
      */
     getUserSubscriptionUrl: async (): Promise<string | null> => {
-      const token = utils.getToken()
-      if (!token) return null
+      const authHeader = utils.getAuthHeaderValue()
+      if (!authHeader) {
+        logDebug('getUserSubscriptionUrl abort (missing auth)')
+        return null
+      }
 
       const baseUrl = utils.getBaseUrl()
+      logDebug('getUserSubscriptionUrl start', { baseUrl })
 
       try {
         const response = await callV3Gateway(
@@ -82,11 +151,12 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
           'GET',
           undefined,
           {
-            'Authorization': token,
+            'Authorization': authHeader,
             'User-Agent': API_USER_AGENT
           }
         )
 
+        logDebug('getUserSubscriptionUrl response', { status: response.status, ok: response.ok })
         if (response.status === 401) {
           // Token invalid, clean up
           utils.clearToken()
@@ -115,11 +185,15 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
           }
         }
 
-        // Return the subscribe_url from response data, appending &flag=meta
-        if (data.data && data.data.subscribe_url) {
-          return ensureMetaFlag(data.data.subscribe_url)
+        const payload = data?.data ?? data
+        const rawUrl = payload?.subscribe_url ?? payload?.subscribeUrl ?? payload?.url
+        if (typeof rawUrl === 'string' && rawUrl.trim()) {
+          const normalized = ensureMetaFlag(rawUrl.trim())
+          logDebug('getUserSubscriptionUrl success', { url: maskUrl(normalized) })
+          return normalized
         }
 
+        logDebug('getUserSubscriptionUrl missing url', { keys: payload ? Object.keys(payload) : null })
         return null
       } catch (error) {
         console.error('Error fetching subscription URL:', error)
@@ -138,7 +212,7 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
 
     getBaseUrl: (): string => {
       const backend = getActiveBackend(appConfig)
-      return backend?.url?.replace(/\/+$/, '') || ''
+      return normalizeBackendUrl(backend?.url)
     }
   }
 

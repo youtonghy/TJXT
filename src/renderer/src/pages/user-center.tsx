@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Chip, Tabs, Tab } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
-import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
@@ -16,6 +15,7 @@ import {
   initializeBackends,
   findOptimalBackend,
   callV3Gateway,
+  normalizeBackendUrl,
   BackendTestResult
 } from '@renderer/utils/user-center-backend'
 
@@ -62,7 +62,56 @@ const WEB_LOGIN_REDIRECT_URI = 'mihomo://user-center-login'
 const UserCenter: React.FC = () => {
   const { t } = useTranslation()
   const { appConfig, patchAppConfig } = useAppConfig()
-  const { refreshUserSubscription, addProfileItem, changeCurrentProfile } = useProfileConfig()
+  const { refreshUserSubscription } = useProfileConfig()
+  const debugEnabled = useMemo(() => {
+    try {
+      return import.meta.env.DEV || localStorage.getItem('userCenter.debug') === '1'
+    } catch {
+      return import.meta.env.DEV
+    }
+  }, [])
+  const logDebug = useCallback((...args: unknown[]) => {
+    if (debugEnabled) {
+      console.info('[UserCenter]', ...args)
+    }
+  }, [debugEnabled])
+  const maskToken = useCallback((token?: string | null) => {
+    if (!token) return null
+    const trimmed = token.trim()
+    if (!trimmed) return null
+    if (trimmed.length <= 12) return `${trimmed.slice(0, 2)}***`
+    return `${trimmed.slice(0, 6)}***${trimmed.slice(-4)}`
+  }, [])
+  const maskUrl = useCallback((raw?: string | null) => {
+    if (!raw) return null
+    try {
+      const url = new URL(raw)
+      const keys = ['token', 'access_token', 'accessToken', 'auth_data', 'authData']
+      keys.forEach((key) => {
+        if (url.searchParams.has(key)) {
+          url.searchParams.set(key, '***')
+        }
+      })
+      return url.toString()
+    } catch {
+      return raw
+    }
+  }, [])
+  const shouldMarkOffline = useCallback((error: unknown) => {
+    if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+      return true
+    }
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      if (message.startsWith('http ')) return false
+      if (message.includes('服务器响应异常')) return false
+      if (message.includes('timeout') || message.includes('timed out')) return true
+      if (message.includes('failed to fetch') || message.includes('network') || message.includes('fetch')) {
+        return true
+      }
+    }
+    return false
+  }, [])
   
   // Backend management
   const [backends, setBackends] = useState<IUserCenterBackend[]>([])
@@ -76,6 +125,9 @@ const UserCenter: React.FC = () => {
 
   // Use selected backend URL or fallback to active backend (selected > default)
   const activeBackend = selectedBackend || getActiveBackend(appConfig)
+  const getNormalizedBaseUrl = useCallback(() => {
+    return normalizeBackendUrl(activeBackend?.url)
+  }, [activeBackend])
 
   // 状态管理
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -147,21 +199,75 @@ const UserCenter: React.FC = () => {
     lastTest: null
   })
   
+  const normalizeTokenType = (value?: string | null): string | null => {
+    if (!value) return null
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+
+  const formatAuthToken = (token: string, tokenType?: string | null): string => {
+    if (/\s/.test(token)) return token
+    const normalizedType = normalizeTokenType(tokenType)
+    if (!normalizedType) return token
+    if (normalizedType.toLowerCase() === 'bearer') return token
+    return `${normalizedType} ${token}`
+  }
+
+  type AuthPayload = { token: string; tokenType?: string | null }
+
+  const normalizeAuthPayload = (payload: unknown): AuthPayload | null => {
+    if (typeof payload === 'string' && payload.trim()) {
+      return { token: payload.trim() }
+    }
+    if (!payload || typeof payload !== 'object') return null
+
+    const data = payload as Record<string, unknown>
+    const tokenType =
+      normalizeTokenType((data.token_type as string | undefined) || (data.tokenType as string | undefined)) || undefined
+
+    if (data.auth_data && typeof data.auth_data === 'object') {
+      const nested = normalizeAuthPayload(data.auth_data)
+      if (nested) {
+        return { ...nested, tokenType: nested.tokenType ?? tokenType }
+      }
+    }
+
+    const tokenCandidates = [
+      data.auth_data,
+      data.authData,
+      data.access_token,
+      data.accessToken,
+      data.token
+    ]
+    const token = tokenCandidates.find((value) => typeof value === 'string' && value.trim()) as
+      | string
+      | undefined
+    if (!token) return null
+    return { token: token.trim(), tokenType }
+  }
+
   // Token管理工具函数
   const tokenManager = {
     // 设置Token（带过期时间）
-    setToken: (token: string, expiresInDays: number = 7) => {
+    setToken: (token: string, expiresInDays: number = 7, tokenType?: string | null) => {
+      const normalizedType = normalizeTokenType(tokenType)
       const now = new Date()
       const expiresAt = now.getTime() + (expiresInDays * 24 * 60 * 60 * 1000)
       
       const tokenData = {
         token,
         expiresAt,
-        createdAt: now.getTime()
+        createdAt: now.getTime(),
+        ...(normalizedType ? { tokenType: normalizedType } : {})
       }
       
       localStorage.setItem('userToken', token)
       localStorage.setItem('userTokenData', JSON.stringify(tokenData))
+      logDebug('token stored', {
+        token: maskToken(token),
+        tokenType: normalizedType,
+        expiresAt
+      })
     },
     
     // 获取Token
@@ -189,6 +295,27 @@ const UserCenter: React.FC = () => {
         tokenManager.clearToken()
         return null
       }
+    },
+
+    // 获取 Token 类型
+    getTokenType: (): string | null => {
+      const tokenDataStr = localStorage.getItem('userTokenData')
+      if (!tokenDataStr) return null
+      try {
+        const tokenData = JSON.parse(tokenDataStr)
+        return normalizeTokenType(tokenData.tokenType)
+      } catch {
+        return null
+      }
+    },
+
+    // 获取 Authorization header 值
+    getAuthHeaderValue: (): string | null => {
+      const token = tokenManager.getToken()
+      if (!token) return null
+      const headerValue = formatAuthToken(token, tokenManager.getTokenType())
+      logDebug('auth header prepared', { token: maskToken(token), header: maskToken(headerValue) })
+      return headerValue
     },
     
     // 清除Token
@@ -268,27 +395,38 @@ const UserCenter: React.FC = () => {
 
   // 通用API请求函数（使用 V3 网关）
   const apiRequest = useCallback(async (endpoint: string, options: { method?: 'GET' | 'POST'; params?: Record<string, unknown> } = {}) => {
-    const token = tokenManager.getToken()
-    if (!token) {
+    const authHeader = tokenManager.getAuthHeaderValue()
+    if (!authHeader) {
+      logDebug('apiRequest aborted (missing auth)', { endpoint, method: options.method || 'GET' })
       setIsLoggedIn(false)
       return null
     }
 
     // 移除开头的斜杠
     const cleanEndpoint = endpoint.replace(/^\/+/, '')
-    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
 
     try {
+      logDebug('apiRequest start', {
+        endpoint: cleanEndpoint,
+        method: options.method || 'GET',
+        baseUrl
+      })
       const response = await callV3Gateway(
         baseUrl,
         cleanEndpoint,
         options.method || 'GET',
         options.params,
         {
-          'Authorization': token,
+          'Authorization': authHeader,
           'User-Agent': API_USER_AGENT
         }
       )
+      logDebug('apiRequest response', {
+        endpoint: cleanEndpoint,
+        status: response.status,
+        ok: response.ok
+      })
 
       if (response.status === 401) {
         // Token无效或过期，清除并重新登录
@@ -326,13 +464,16 @@ const UserCenter: React.FC = () => {
 
       return data.data || data
     } catch (error) {
-      // 网络请求失败时设置离线状态
-      setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+      // 仅在网络错误时设置离线状态
+      if (shouldMarkOffline(error)) {
+        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+      }
 
       console.error(`API request failed for ${endpoint}:`, error)
+      logDebug('apiRequest failed', { endpoint: cleanEndpoint, error })
       throw error
     }
-  }, [activeBackend])
+  }, [activeBackend, getNormalizedBaseUrl, logDebug, shouldMarkOffline])
 
   // 获取用户信息
   const fetchUserInfo = useCallback(async (showLoading = true) => {
@@ -451,7 +592,8 @@ const UserCenter: React.FC = () => {
   const testServerConnection = useCallback(async () => {
     setServerTestStatus(prev => ({ ...prev, isLoading: true }))
 
-    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
+    logDebug('testServerConnection start', { baseUrl })
 
     try {
       const startTime = Date.now()
@@ -519,10 +661,11 @@ const UserCenter: React.FC = () => {
         ...prev,
         userInfo: `服务器测试失败: ${errorMsg}`
       }))
-
-      setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+      if (shouldMarkOffline(error)) {
+        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+      }
     }
-  }, [activeBackend])
+  }, [getNormalizedBaseUrl, logDebug, shouldMarkOffline])
 
   // Backend management functions
   const initializeBackendList = useCallback(async () => {
@@ -645,8 +788,17 @@ const UserCenter: React.FC = () => {
     }
   }, [patchAppConfig, appConfig])
 
-  const completeLogin = useCallback(async (authToken: string) => {
-    tokenManager.setToken(authToken, 7)
+  const completeLogin = useCallback(async (authPayload: AuthPayload | string) => {
+    const normalized = normalizeAuthPayload(authPayload)
+    if (!normalized) {
+      logDebug('completeLogin failed to normalize payload', { payload: authPayload })
+      throw new Error('返回数据格式错误')
+    }
+    logDebug('completeLogin start', {
+      token: maskToken(normalized.token),
+      tokenType: normalized.tokenType || null
+    })
+    tokenManager.setToken(normalized.token, 7, normalized.tokenType)
     setIsLoggedIn(true)
     setErrors(prev => ({ ...prev, userInfo: null }))
     setTelegramToken(null)
@@ -664,34 +816,11 @@ const UserCenter: React.FC = () => {
         fetchAnnouncements(),
         refreshUserSubscription()
       ])
-
-      try {
-        const authUtils = createUserAuthUtils(appConfig)
-        const subUrl = await authUtils.getUserSubscriptionUrl()
-        if (subUrl) {
-          await addProfileItem({
-            id: 'user-subscription-meta',
-            type: 'remote',
-            name: '用户订阅 (Clash Meta)',
-            url: subUrl,
-            interval: 60 * 60,
-            override: [],
-            useProxy: false,
-            allowFixedInterval: false,
-            substore: false
-          })
-          await changeCurrentProfile('user-subscription-meta')
-        }
-      } catch (e) {
-        console.warn('Profile setup failed:', e)
-      }
+      logDebug('completeLogin refresh done')
     } catch (e) {
       console.warn('Initial data load failed:', e)
     }
   }, [
-    addProfileItem,
-    appConfig,
-    changeCurrentProfile,
     fetchAnnouncements,
     fetchUserInfo,
     refreshUserSubscription,
@@ -699,13 +828,17 @@ const UserCenter: React.FC = () => {
   ])
 
   const handleWebLogin = async () => {
-    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
 
     if (!baseUrl) {
       setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
       return
     }
 
+    logDebug('webLogin init', {
+      baseUrl,
+      redirectUri: WEB_LOGIN_REDIRECT_URI
+    })
     resetWebLogin()
     setWebLoginStatus('starting')
     setLoading(prev => ({ ...prev, userInfo: true }))
@@ -717,6 +850,7 @@ const UserCenter: React.FC = () => {
         : Math.random().toString(36).slice(2)
       webLoginStateRef.current = state
       localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
+      logDebug('webLogin state generated', { state })
 
       // thirdPartyLogin/init 是白名单接口，可以直连（使用 /api/v3 路径）
       const response = await fetch(`${baseUrl}/api/v3/passport/auth/thirdPartyLogin/init`, {
@@ -733,6 +867,11 @@ const UserCenter: React.FC = () => {
       })
 
       const contentType = response.headers.get('content-type') || ''
+      logDebug('webLogin init response', {
+        status: response.status,
+        ok: response.ok,
+        contentType
+      })
       if (!contentType.includes('application/json')) {
         if (response.status === 404) {
           throw new Error(t('userCenter.webLoginNotSupported'))
@@ -746,6 +885,11 @@ const UserCenter: React.FC = () => {
       } catch {
         throw new Error(t('userCenter.webLoginInitFailed'))
       }
+      logDebug('webLogin init payload', {
+        keys: data ? Object.keys(data) : null,
+        appName: data?.data?.app_name ?? data?.app_name ?? null,
+        expiresIn: data?.data?.expires_in ?? null
+      })
 
       if (!response.ok) {
         const fallback = response.status === 404
@@ -758,11 +902,13 @@ const UserCenter: React.FC = () => {
       if (!loginPageUrl) {
         throw new Error(t('userCenter.webLoginInitFailed'))
       }
+      logDebug('webLogin open page', { url: maskUrl(loginPageUrl) })
 
       setWebLoginStatus('pending')
       scheduleWebLoginTimeout(data?.data?.expires_in)
       window.open(loginPageUrl, '_blank')
     } catch (error) {
+      logDebug('webLogin init failed', error)
       resetWebLogin()
       const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginInitFailed')
       setErrors(prev => ({ ...prev, userInfo: errorMessage }))
@@ -790,7 +936,7 @@ const UserCenter: React.FC = () => {
     setErrors(prev => ({ ...prev, userInfo: null }))
     setTelegramStatus('idle')
 
-    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
 
     try {
       const response = await callV3Gateway(
@@ -843,7 +989,7 @@ const UserCenter: React.FC = () => {
         return
     }
 
-    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
 
     const checkStatus = async () => {
         try {
@@ -888,9 +1034,10 @@ const UserCenter: React.FC = () => {
   // Token Login (Final Step)（使用 V3 网关）
   const performTokenLogin = async (verifyCode: string) => {
       setLoading(prev => ({ ...prev, userInfo: true }))
-      const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+    const baseUrl = getNormalizedBaseUrl()
 
       try {
+        logDebug('telegram token2Login start', { baseUrl, verify: maskToken(verifyCode) })
         const response = await callV3Gateway(
           baseUrl,
           'passport/auth/token2Login',
@@ -901,14 +1048,19 @@ const UserCenter: React.FC = () => {
           }
         )
 
+        logDebug('telegram token2Login response', { status: response.status, ok: response.ok })
         if (!response.ok) {
            throw new Error('验证登录失败')
         }
 
         const data = await response.json()
+        logDebug('telegram token2Login payload', {
+          keys: data ? Object.keys(data) : null
+        })
 
-        if (data.data && data.data.auth_data) {
-             await completeLogin(data.data.auth_data)
+        const authPayload = normalizeAuthPayload(data?.data ?? data)
+        if (authPayload) {
+             await completeLogin(authPayload)
         } else {
             throw new Error('返回数据格式错误')
         }
@@ -923,10 +1075,20 @@ const UserCenter: React.FC = () => {
   }
 
   useEffect(() => {
-    const handleUserCenterLogin = async (_event: unknown, payload?: { accessToken?: string | null; error?: string | null; state?: string | null }) => {
+    const handleUserCenterLogin = async (
+      _event: unknown,
+      payload?: { accessToken?: string | null; tokenType?: string | null; error?: string | null; state?: string | null }
+    ) => {
       if (!payload) return
+      logDebug('deeplink received', {
+        accessToken: maskToken(payload.accessToken),
+        tokenType: payload.tokenType || null,
+        error: payload.error || null,
+        state: payload.state || null
+      })
       const expectedState = getWebLoginState()
       if (payload.state && expectedState && payload.state !== expectedState) {
+        logDebug('deeplink state mismatch', { expected: expectedState, actual: payload.state })
         setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginStateMismatch') }))
         resetWebLogin()
         return
@@ -936,6 +1098,7 @@ const UserCenter: React.FC = () => {
         const message = payload.error === 'access_denied'
           ? t('userCenter.webLoginDenied')
           : t('userCenter.webLoginFailed')
+        logDebug('deeplink error', { error: payload.error })
         setErrors(prev => ({ ...prev, userInfo: message }))
         resetWebLogin()
         return
@@ -944,7 +1107,8 @@ const UserCenter: React.FC = () => {
       if (payload.accessToken) {
         setLoading(prev => ({ ...prev, userInfo: true }))
         try {
-          await completeLogin(payload.accessToken)
+          logDebug('deeplink login start')
+          await completeLogin({ token: payload.accessToken, tokenType: payload.tokenType })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginFailed')
           setErrors(prev => ({ ...prev, userInfo: errorMessage }))
@@ -1063,6 +1227,7 @@ rules:
 
     // 检查并加载保存的token
     const token = tokenManager.getToken()
+    logDebug('init token check', { hasToken: Boolean(token), token: maskToken(token) })
     if (token) {
       setIsLoggedIn(true)
       fetchUserInfo()

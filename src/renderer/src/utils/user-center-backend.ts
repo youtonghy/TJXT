@@ -17,7 +17,7 @@ const normalizeApiVersion = (value?: string): 'v1' | 'v3' => {
   return value === 'v1' ? 'v1' : 'v3'
 }
 
-const normalizeBackendUrl = (value?: string): string => {
+export const normalizeBackendUrl = (value?: string): string => {
   if (!value) return ''
   const trimmed = value.trim()
   if (!trimmed) return ''
