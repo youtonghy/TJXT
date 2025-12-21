@@ -11,7 +11,7 @@ export interface UserTokenData {
 /**
  * Create user auth utils with app config
  */
-import { getActiveBackend, getBackendApiBaseUrl } from '@renderer/utils/user-center-backend'
+import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 
 export const createUserAuthUtils = (appConfig?: IAppConfig) => {
@@ -72,17 +72,20 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
     getUserSubscriptionUrl: async (): Promise<string | null> => {
       const token = utils.getToken()
       if (!token) return null
-      
-      const apiBaseUrl = utils.getApiBaseUrl()
-      
+
+      const baseUrl = utils.getBaseUrl()
+
       try {
-        const response = await fetch(`${apiBaseUrl}/user/getSubscribe`, {
-          headers: {
+        const response = await callV3Gateway(
+          baseUrl,
+          'user/getSubscribe',
+          'GET',
+          undefined,
+          {
             'Authorization': token,
-            'Content-Type': 'application/json',
             'User-Agent': API_USER_AGENT
           }
-        })
+        )
 
         if (response.status === 401) {
           // Token invalid, clean up
@@ -116,7 +119,7 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
         if (data.data && data.data.subscribe_url) {
           return ensureMetaFlag(data.data.subscribe_url)
         }
-        
+
         return null
       } catch (error) {
         console.error('Error fetching subscription URL:', error)
@@ -133,9 +136,9 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
       return backend.url
     },
 
-    getApiBaseUrl: (): string => {
+    getBaseUrl: (): string => {
       const backend = getActiveBackend(appConfig)
-      return getBackendApiBaseUrl(backend)
+      return backend?.url?.replace(/\/+$/, '') || ''
     }
   }
 

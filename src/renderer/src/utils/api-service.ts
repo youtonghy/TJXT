@@ -2,7 +2,12 @@
  * Centralized API Service for V2Board API
  * Based on API_DOCUMENTATION.md specification
  * User-Agent: TJXT
+ *
+ * NOTE: This service class uses V3 Gateway for all API calls.
+ * All requests are routed through /api/v3/server gateway.
  */
+
+import { callV3Gateway } from './user-center-backend'
 
 // Default User-Agent for all requests
 export const API_USER_AGENT = 'TJXT'
@@ -189,15 +194,9 @@ export class ApiService {
     return this.token
   }
 
-  private getHeaders(withAuth: boolean = true, contentType: 'json' | 'form' = 'json'): HeadersInit {
-    const headers: HeadersInit = {
+  private getHeaders(withAuth: boolean = true): Record<string, string> {
+    const headers: Record<string, string> = {
       'User-Agent': API_USER_AGENT
-    }
-
-    if (contentType === 'json') {
-      headers['Content-Type'] = 'application/json'
-    } else {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded'
     }
 
     if (withAuth && this.token) {
@@ -244,46 +243,52 @@ export class ApiService {
 
   /**
    * User login
-   * POST /api/v3/passport/auth/login
+   * POST passport/auth/login (via V3 Gateway)
    */
   async login(email: string, password: string, options?: {
     recaptcha_data?: string
     turnstile_token?: string
   }): Promise<LoginResponse> {
-    const body = new URLSearchParams()
-    body.set('email', email)
-    body.set('password', password)
-    if (options?.recaptcha_data) body.set('recaptcha_data', options.recaptcha_data)
-    if (options?.turnstile_token) body.set('turnstile_token', options.turnstile_token)
+    const params: Record<string, unknown> = {
+      email,
+      password
+    }
+    if (options?.recaptcha_data) params.recaptcha_data = options.recaptcha_data
+    if (options?.turnstile_token) params.turnstile_token = options.turnstile_token
 
-    const response = await fetch(`${this.baseUrl}/api/v3/passport/auth/login`, {
-      method: 'POST',
-      headers: this.getHeaders(false, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'passport/auth/login',
+      'POST',
+      params,
+      this.getHeaders(false)
+    )
 
     return this.handleResponse<LoginResponse>(response)
   }
 
   /**
    * Send email verification code
-   * POST /api/v3/passport/comm/sendEmailVerify
+   * POST passport/comm/sendEmailVerify (via V3 Gateway)
    */
   async sendEmailVerify(email: string, isForget: boolean = false, options?: {
     recaptcha_data?: string
     turnstile_token?: string
   }): Promise<boolean> {
-    const body = new URLSearchParams()
-    body.set('email', email)
-    body.set('isforget', isForget ? '1' : '0')
-    if (options?.recaptcha_data) body.set('recaptcha_data', options.recaptcha_data)
-    if (options?.turnstile_token) body.set('turnstile_token', options.turnstile_token)
+    const params: Record<string, unknown> = {
+      email,
+      isforget: isForget ? '1' : '0'
+    }
+    if (options?.recaptcha_data) params.recaptcha_data = options.recaptcha_data
+    if (options?.turnstile_token) params.turnstile_token = options.turnstile_token
 
-    const response = await fetch(`${this.baseUrl}/api/v3/passport/comm/sendEmailVerify`, {
-      method: 'POST',
-      headers: this.getHeaders(false, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'passport/comm/sendEmailVerify',
+      'POST',
+      params,
+      this.getHeaders(false)
+    )
 
     return this.handleResponse<boolean>(response)
   }
@@ -292,69 +297,80 @@ export class ApiService {
 
   /**
    * Get user info
-   * GET /api/v3/user/info
+   * GET user/info (via V3 Gateway)
    */
   async getUserInfo(): Promise<UserInfo> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/info`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/info',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<UserInfo>(response)
   }
 
   /**
    * Get subscription info
-   * GET /api/v3/user/getSubscribe
+   * GET user/getSubscribe (via V3 Gateway)
    */
   async getSubscribe(): Promise<SubscribeInfo> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/getSubscribe`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/getSubscribe',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<SubscribeInfo>(response)
   }
 
   /**
    * Get user statistics [pending orders, pending tickets, invited users]
-   * GET /api/v3/user/getStat
+   * GET user/getStat (via V3 Gateway)
    */
   async getUserStat(): Promise<[number, number, number]> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/getStat`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/getStat',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<[number, number, number]>(response)
   }
 
   /**
    * Check login status
-   * GET /api/v3/user/checkLogin
+   * GET user/checkLogin (via V3 Gateway)
    */
   async checkLogin(): Promise<{ is_login: boolean; is_admin: boolean }> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/checkLogin`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/checkLogin',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<{ is_login: boolean; is_admin: boolean }>(response)
   }
 
   /**
    * Redeem gift card
-   * POST /api/v3/user/redeemgiftcard
+   * POST user/redeemgiftcard (via V3 Gateway)
    */
   async redeemGiftCard(giftcard: string): Promise<GiftCardRedeemResult> {
-    const body = new URLSearchParams()
-    body.set('giftcard', giftcard)
-
-    const response = await fetch(`${this.baseUrl}/api/v3/user/redeemgiftcard`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/redeemgiftcard',
+      'POST',
+      { giftcard },
+      this.getHeaders(true)
+    )
 
     // This endpoint returns { data: true, type: number, value: number }
     const data = await response.json()
@@ -368,19 +384,21 @@ export class ApiService {
 
   /**
    * Get notices
-   * GET /api/v3/user/notice/fetch
+   * GET user/notice/fetch (via V3 Gateway)
    */
   async getNotices(options?: { id?: number; current?: number; pageSize?: number }): Promise<{ data: Notice[]; total: number }> {
-    const params = new URLSearchParams()
-    if (options?.id) params.set('id', String(options.id))
-    if (options?.current) params.set('current', String(options.current))
-    if (options?.pageSize) params.set('pageSize', String(options.pageSize))
+    const params: Record<string, unknown> = {}
+    if (options?.id) params.id = options.id
+    if (options?.current) params.current = options.current
+    if (options?.pageSize) params.pageSize = options.pageSize
 
-    const url = `${this.baseUrl}/api/v3/user/notice/fetch${params.toString() ? `?${params.toString()}` : ''}`
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/notice/fetch',
+      'GET',
+      Object.keys(params).length > 0 ? params : undefined,
+      this.getHeaders(true)
+    )
 
     const result = await response.json()
     if (!response.ok) {
@@ -400,17 +418,18 @@ export class ApiService {
 
   /**
    * Get plans
-   * GET /api/v3/user/plan/fetch
+   * GET user/plan/fetch (via V3 Gateway)
    */
   async getPlans(id?: number): Promise<Plan[]> {
-    const url = id
-      ? `${this.baseUrl}/api/v3/user/plan/fetch?id=${encodeURIComponent(id)}`
-      : `${this.baseUrl}/api/v3/user/plan/fetch`
+    const params = id ? { id } : undefined
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/plan/fetch',
+      'GET',
+      params,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<Plan[]>(response)
   }
@@ -419,32 +438,33 @@ export class ApiService {
 
   /**
    * Get orders
-   * GET /api/v3/user/order/fetch
+   * GET user/order/fetch (via V3 Gateway)
    */
   async getOrders(status?: number): Promise<OrderDetail[]> {
-    const url = status !== undefined
-      ? `${this.baseUrl}/api/v3/user/order/fetch?status=${encodeURIComponent(status)}`
-      : `${this.baseUrl}/api/v3/user/order/fetch`
+    const params = status !== undefined ? { status } : undefined
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/fetch',
+      'GET',
+      params,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<OrderDetail[]>(response)
   }
 
   /**
    * Get order detail
-   * GET /api/v3/user/order/detail
+   * GET user/order/detail (via V3 Gateway)
    */
   async getOrderDetail(tradeNo: string): Promise<OrderDetail> {
-    const response = await fetch(
-      `${this.baseUrl}/api/v3/user/order/detail?trade_no=${encodeURIComponent(tradeNo)}`,
-      {
-        method: 'GET',
-        headers: this.getHeaders(true)
-      }
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/detail',
+      'GET',
+      { trade_no: tradeNo },
+      this.getHeaders(true)
     )
 
     return this.handleResponse<OrderDetail>(response)
@@ -452,7 +472,7 @@ export class ApiService {
 
   /**
    * Create order
-   * POST /api/v3/user/order/save
+   * POST user/order/save (via V3 Gateway)
    */
   async createOrder(options: {
     plan_id: number
@@ -460,36 +480,42 @@ export class ApiService {
     coupon_code?: string
     deposit_amount?: number
   }): Promise<string> {
-    const body = new URLSearchParams()
-    body.set('plan_id', String(options.plan_id))
-    if (options.period) body.set('period', options.period)
-    if (options.coupon_code) body.set('coupon_code', options.coupon_code)
-    if (options.deposit_amount !== undefined) body.set('deposit_amount', String(options.deposit_amount))
+    const params: Record<string, unknown> = {
+      plan_id: options.plan_id
+    }
+    if (options.period) params.period = options.period
+    if (options.coupon_code) params.coupon_code = options.coupon_code
+    if (options.deposit_amount !== undefined) params.deposit_amount = options.deposit_amount
 
-    const response = await fetch(`${this.baseUrl}/api/v3/user/order/save`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/save',
+      'POST',
+      params,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<string>(response)
   }
 
   /**
    * Checkout order
-   * POST /api/v3/user/order/checkout
+   * POST user/order/checkout (via V3 Gateway)
    */
   async checkoutOrder(tradeNo: string, method: number, token?: string): Promise<{ type: number; data: string | boolean }> {
-    const body = new URLSearchParams()
-    body.set('trade_no', tradeNo)
-    body.set('method', String(method))
-    if (token) body.set('token', token)
+    const params: Record<string, unknown> = {
+      trade_no: tradeNo,
+      method
+    }
+    if (token) params.token = token
 
-    const response = await fetch(`${this.baseUrl}/api/v3/user/order/checkout`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/checkout',
+      'POST',
+      params,
+      this.getHeaders(true)
+    )
 
     const result = await response.json()
     if (!response.ok) {
@@ -500,15 +526,15 @@ export class ApiService {
 
   /**
    * Check order status
-   * GET /api/v3/user/order/check
+   * GET user/order/check (via V3 Gateway)
    */
   async checkOrderStatus(tradeNo: string): Promise<number> {
-    const response = await fetch(
-      `${this.baseUrl}/api/v3/user/order/check?trade_no=${encodeURIComponent(tradeNo)}`,
-      {
-        method: 'GET',
-        headers: this.getHeaders(true)
-      }
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/check',
+      'GET',
+      { trade_no: tradeNo },
+      this.getHeaders(true)
     )
 
     return this.handleResponse<number>(response)
@@ -516,30 +542,32 @@ export class ApiService {
 
   /**
    * Cancel order
-   * POST /api/v3/user/order/cancel
+   * POST user/order/cancel (via V3 Gateway)
    */
   async cancelOrder(tradeNo: string): Promise<boolean> {
-    const body = new URLSearchParams()
-    body.set('trade_no', tradeNo)
-
-    const response = await fetch(`${this.baseUrl}/api/v3/user/order/cancel`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/cancel',
+      'POST',
+      { trade_no: tradeNo },
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<boolean>(response)
   }
 
   /**
    * Get payment methods
-   * GET /api/v3/user/order/getPaymentMethod
+   * GET user/order/getPaymentMethod (via V3 Gateway)
    */
   async getPaymentMethods(): Promise<PaymentMethod[]> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/order/getPaymentMethod`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/order/getPaymentMethod',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<PaymentMethod[]>(response)
   }
@@ -548,18 +576,19 @@ export class ApiService {
 
   /**
    * Check coupon
-   * POST /api/v3/user/coupon/check
+   * POST user/coupon/check (via V3 Gateway)
    */
   async checkCoupon(code: string, planId?: number): Promise<Coupon> {
-    const body = new URLSearchParams()
-    body.set('code', code)
-    if (planId !== undefined) body.set('plan_id', String(planId))
+    const params: Record<string, unknown> = { code }
+    if (planId !== undefined) params.plan_id = planId
 
-    const response = await fetch(`${this.baseUrl}/api/v3/user/coupon/check`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/coupon/check',
+      'POST',
+      params,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<Coupon>(response)
   }
@@ -568,28 +597,31 @@ export class ApiService {
 
   /**
    * Get tickets
-   * GET /api/v3/user/ticket/fetch
+   * GET user/ticket/fetch (via V3 Gateway)
    */
   async getTickets(): Promise<TicketItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/fetch`, {
-      method: 'GET',
-      headers: this.getHeaders(true)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/ticket/fetch',
+      'GET',
+      undefined,
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<TicketItem[]>(response)
   }
 
   /**
    * Get ticket detail
-   * GET /api/v3/user/ticket/fetch?id=xxx
+   * GET user/ticket/fetch (via V3 Gateway)
    */
   async getTicketDetail(id: number): Promise<TicketDetail> {
-    const response = await fetch(
-      `${this.baseUrl}/api/v3/user/ticket/fetch?id=${encodeURIComponent(id)}`,
-      {
-        method: 'GET',
-        headers: this.getHeaders(true)
-      }
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/ticket/fetch',
+      'GET',
+      { id },
+      this.getHeaders(true)
     )
 
     return this.handleResponse<TicketDetail>(response)
@@ -597,54 +629,48 @@ export class ApiService {
 
   /**
    * Create ticket
-   * POST /api/v3/user/ticket/save
+   * POST user/ticket/save (via V3 Gateway)
    */
   async createTicket(subject: string, level: number, message: string): Promise<boolean> {
-    const body = new URLSearchParams()
-    body.set('subject', subject)
-    body.set('level', String(level))
-    body.set('message', message)
-
-    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/save`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/ticket/save',
+      'POST',
+      { subject, level, message },
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<boolean>(response)
   }
 
   /**
    * Reply to ticket
-   * POST /api/v3/user/ticket/reply
+   * POST user/ticket/reply (via V3 Gateway)
    */
   async replyTicket(id: number, message: string): Promise<boolean> {
-    const body = new URLSearchParams()
-    body.set('id', String(id))
-    body.set('message', message)
-
-    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/reply`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/ticket/reply',
+      'POST',
+      { id, message },
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<boolean>(response)
   }
 
   /**
    * Close ticket
-   * POST /api/v3/user/ticket/close
+   * POST user/ticket/close (via V3 Gateway)
    */
   async closeTicket(id: number): Promise<boolean> {
-    const body = new URLSearchParams()
-    body.set('id', String(id))
-
-    const response = await fetch(`${this.baseUrl}/api/v3/user/ticket/close`, {
-      method: 'POST',
-      headers: this.getHeaders(true, 'form'),
-      body: body.toString()
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'user/ticket/close',
+      'POST',
+      { id },
+      this.getHeaders(true)
+    )
 
     return this.handleResponse<boolean>(response)
   }
@@ -653,34 +679,36 @@ export class ApiService {
 
   /**
    * Get public config
-   * GET /api/v3/guest/comm/config
+   * GET guest/comm/config (via V3 Gateway)
    */
   async getGuestConfig(): Promise<Record<string, unknown>> {
-    const response = await fetch(`${this.baseUrl}/api/v3/guest/comm/config`, {
-      method: 'GET',
-      headers: this.getHeaders(false)
-    })
+    const response = await callV3Gateway(
+      this.baseUrl,
+      'guest/comm/config',
+      'GET',
+      undefined,
+      this.getHeaders(false)
+    )
 
     return this.handleResponse<Record<string, unknown>>(response)
   }
 
   /**
    * Test server connection (ping)
-   * Uses the guest config endpoint for latency testing
+   * Uses the guest config endpoint for latency testing (via V3 Gateway)
    */
   async testConnection(timeout: number = 10000): Promise<{ latency: number; online: boolean }> {
     const startTime = Date.now()
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      const response = await callV3Gateway(
+        this.baseUrl,
+        'guest/comm/config',
+        'GET',
+        undefined,
+        this.getHeaders(false),
+        timeout
+      )
 
-      const response = await fetch(`${this.baseUrl}/api/v3/guest/comm/config`, {
-        method: 'GET',
-        headers: this.getHeaders(false),
-        signal: controller.signal
-      })
-
-      clearTimeout(timeoutId)
       const latency = Date.now() - startTime
 
       return {

@@ -73,6 +73,40 @@ export const getBackendApiBaseUrl = (backend?: IUserCenterBackend): string => {
   return `${baseUrl}${getBackendApiPath(backend)}`
 }
 
+/**
+ * V3 网关调用辅助函数
+ * V3 API 需要通过 /api/v3/server 网关转发请求
+ */
+export const callV3Gateway = async (
+  baseUrl: string,
+  endpoint: string,
+  method: 'GET' | 'POST' = 'GET',
+  params?: Record<string, unknown>,
+  headers?: Record<string, string>,
+  timeoutMs: number = 10000
+): Promise<Response> => {
+  const gatewayUrl = `${baseUrl}/api/v3/server`
+
+  const body: Record<string, unknown> = {
+    endpoint,
+    method
+  }
+
+  if (params && Object.keys(params).length > 0) {
+    body.params = params
+  }
+
+  return fetch(gatewayUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  })
+}
+
 export interface BackendTestResult {
   id: string
   url: string
@@ -84,19 +118,24 @@ export interface BackendTestResult {
 
 /**
  * Test latency for a single backend
+ * 使用 V3 网关调用 guest/comm/config 测试延迟
+ * 超时时间为 1 秒
  */
 export const testBackendLatency = async (backend: IUserCenterBackend): Promise<BackendTestResult> => {
   const startTime = Date.now()
-  const apiBaseUrl = getBackendApiBaseUrl(backend)
+  const baseUrl = normalizeBackendUrl(backend.url)
 
   try {
-    const response = await fetch(`${apiBaseUrl}/guest/comm/config`, {
-      method: 'GET',
-      headers: {
+    const response = await callV3Gateway(
+      baseUrl,
+      'guest/comm/config',
+      'GET',
+      undefined,
+      {
         'User-Agent': API_USER_AGENT
       },
-      signal: AbortSignal.timeout(10000) // 10秒超时
-    })
+      1000 // 1秒超时
+    )
 
     const endTime = Date.now()
     const ping = endTime - startTime

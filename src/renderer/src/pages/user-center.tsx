@@ -7,16 +7,16 @@ import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
-import { 
-  getAllBackends, 
-  getDefaultBackend, 
+import {
+  getAllBackends,
+  getDefaultBackend,
   getActiveBackend,
-  getBackendApiBaseUrl,
-  testAllBackendsLatency, 
-  updateBackendPingResults, 
+  testAllBackendsLatency,
+  updateBackendPingResults,
   initializeBackends,
   findOptimalBackend,
-  BackendTestResult 
+  callV3Gateway,
+  BackendTestResult
 } from '@renderer/utils/user-center-backend'
 
 interface UserInfo {
@@ -73,11 +73,10 @@ const UserCenter: React.FC = () => {
   const [, setUserSelectedBackendId] = useState<string | null>(null)
   const SELECTED_BACKEND_KEY = 'userCenter.selectedBackendId'
   const READ_ANNOUNCEMENTS_KEY = 'userCenter.readAnnouncementIds'
-  
+
   // Use selected backend URL or fallback to active backend (selected > default)
   const activeBackend = selectedBackend || getActiveBackend(appConfig)
-  const apiBaseUrl = getBackendApiBaseUrl(activeBackend)
-  
+
   // 状态管理
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
@@ -131,10 +130,10 @@ const UserCenter: React.FC = () => {
   const backendsRef = useRef<IUserCenterBackend[]>([])
   const hasStartedAutoTest = useRef<boolean>(false)
   
-  // 网络状态
+  // 网络状态 - 默认假设在线，通过实际 API 请求结果来判断
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
-    isOnline: navigator.onLine,
-    lastConnected: navigator.onLine ? new Date() : null
+    isOnline: true,
+    lastConnected: new Date()
   })
   
   // 服务器测试状态
@@ -267,28 +266,29 @@ const UserCenter: React.FC = () => {
     }, expiresInSeconds * 1000)
   }, [clearWebLoginState, t])
 
-  const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+  // 通用API请求函数（使用 V3 网关）
+  const apiRequest = useCallback(async (endpoint: string, options: { method?: 'GET' | 'POST'; params?: Record<string, unknown> } = {}) => {
     const token = tokenManager.getToken()
     if (!token) {
       setIsLoggedIn(false)
       return null
     }
 
-    try {
-      // 检查网络状态
-      if (!navigator.onLine) {
-        throw new Error('网络连接已断开')
-      }
+    // 移除开头的斜杠
+    const cleanEndpoint = endpoint.replace(/^\/+/, '')
+    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
 
-      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
-        ...options,
-        headers: {
-          'Authorization': token, // 参考dashboard.html，直接使用token而不是Bearer格式
-          'User-Agent': API_USER_AGENT,
-          'Content-Type': 'application/json',
-          ...options.headers
+    try {
+      const response = await callV3Gateway(
+        baseUrl,
+        cleanEndpoint,
+        options.method || 'GET',
+        options.params,
+        {
+          'Authorization': token,
+          'User-Agent': API_USER_AGENT
         }
-      })
+      )
 
       if (response.status === 401) {
         // Token无效或过期，清除并重新登录
@@ -317,24 +317,22 @@ const UserCenter: React.FC = () => {
       }
 
       const data = await response.json()
-      
+
       // API请求成功，更新网络状态
       setNetworkStatus({
         isOnline: true,
         lastConnected: new Date()
       })
-      
+
       return data.data || data
     } catch (error) {
-      // 检查是否是网络错误
-      if (!navigator.onLine) {
-        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
-      }
-      
+      // 网络请求失败时设置离线状态
+      setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+
       console.error(`API request failed for ${endpoint}:`, error)
       throw error
     }
-  }, [apiBaseUrl])
+  }, [activeBackend])
 
   // 获取用户信息
   const fetchUserInfo = useCallback(async (showLoading = true) => {
@@ -449,28 +447,32 @@ const UserCenter: React.FC = () => {
     })
   }, [READ_ANNOUNCEMENTS_KEY])
 
-  // 服务器连接测试
+  // 服务器连接测试（使用 V3 网关）
   const testServerConnection = useCallback(async () => {
     setServerTestStatus(prev => ({ ...prev, isLoading: true }))
-    
+
+    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+
     try {
       const startTime = Date.now()
-      const response = await fetch(`${apiBaseUrl}/guest/comm/config`, {
-        method: 'GET',
-        headers: {
+      const response = await callV3Gateway(
+        baseUrl,
+        'guest/comm/config',
+        'GET',
+        undefined,
+        {
           'User-Agent': API_USER_AGENT
-        },
-        signal: AbortSignal.timeout(10000) // 10秒超时
-      })
+        }
+      )
       const endTime = Date.now()
       const ping = endTime - startTime
-      
+
       setServerTestStatus({
         isLoading: false,
         lastPing: ping,
         lastTest: new Date()
       })
-      
+
       if (response.ok) {
         let configData: any = null
         try {
@@ -501,7 +503,7 @@ const UserCenter: React.FC = () => {
         lastTest: new Date()
       }))
       setTelegramLoginEnabled(false)
-      
+
       let errorMsg = '服务器连接失败'
       if (error instanceof Error) {
         if (error.name === 'AbortError' || error.message.includes('timeout')) {
@@ -512,15 +514,15 @@ const UserCenter: React.FC = () => {
           errorMsg = error.message
         }
       }
-      
-      setErrors(prev => ({ 
-        ...prev, 
-        userInfo: `服务器测试失败: ${errorMsg}` 
+
+      setErrors(prev => ({
+        ...prev,
+        userInfo: `服务器测试失败: ${errorMsg}`
       }))
-      
+
       setNetworkStatus(prev => ({ ...prev, isOnline: false }))
     }
-  }, [apiBaseUrl])
+  }, [activeBackend])
 
   // Backend management functions
   const initializeBackendList = useCallback(async () => {
@@ -544,23 +546,35 @@ const UserCenter: React.FC = () => {
     }
   }, [appConfig, patchAppConfig])
 
-  const testAllBackends = useCallback(async () => {
+  const testAllBackends = useCallback(async (): Promise<BackendTestResult[]> => {
     const currentBackends = backendsRef.current
-    if (currentBackends.length === 0) return
-    
+    if (currentBackends.length === 0) return []
+
     setIsTestingBackends(true)
     try {
       const results = await testAllBackendsLatency(currentBackends)
       setBackendTestResults(results)
-      
-      // Update backend ping results in configuration
-      await updateBackendPingResults(results, patchAppConfig, appConfig)
-      
-      // Update local backend list
-      const updatedBackends = getAllBackends(appConfig)
+
+      // 直接使用测速结果更新本地 backends 状态
+      const updatedBackends = currentBackends.map(backend => {
+        const testResult = results.find(result => result.id === backend.id)
+        if (testResult) {
+          return {
+            ...backend,
+            lastPing: testResult.ping,
+            lastTest: Date.now(),
+            isActive: testResult.isActive
+          }
+        }
+        return backend
+      })
+
       setBackends(updatedBackends)
-      backendsRef.current = updatedBackends // 更新 ref
-      
+      backendsRef.current = updatedBackends
+
+      // 异步更新配置（不阻塞 UI 更新）
+      updateBackendPingResults(results, patchAppConfig, appConfig).catch(console.error)
+
       return results
     } catch (error) {
       console.error('Backend testing failed:', error)
@@ -573,20 +587,32 @@ const UserCenter: React.FC = () => {
   const testAllBackendsAndSelectOptimal = useCallback(async () => {
     const currentBackends = backendsRef.current
     if (currentBackends.length <= 1) return
-    
+
     setIsTestingBackends(true)
     try {
       const results = await testAllBackendsLatency(currentBackends)
       setBackendTestResults(results)
-      
-      // Update backend ping results in configuration
-      await updateBackendPingResults(results, patchAppConfig, appConfig)
-      
-      // Get updated backends with ping results
-      const updatedBackends = getAllBackends(appConfig)
+
+      // 直接使用测速结果更新本地 backends 状态
+      const updatedBackends = currentBackends.map(backend => {
+        const testResult = results.find(result => result.id === backend.id)
+        if (testResult) {
+          return {
+            ...backend,
+            lastPing: testResult.ping,
+            lastTest: Date.now(),
+            isActive: testResult.isActive
+          }
+        }
+        return backend
+      })
+
       setBackends(updatedBackends)
-      backendsRef.current = updatedBackends // 更新 ref
-      
+      backendsRef.current = updatedBackends
+
+      // 异步更新配置（不阻塞 UI 更新）
+      updateBackendPingResults(results, patchAppConfig, appConfig).catch(console.error)
+
       // Find optimal backend and set as current selection (do not change default)
       const optimalBackend = findOptimalBackend(updatedBackends)
       if (optimalBackend && optimalBackend.id !== selectedBackend?.id) {
@@ -595,7 +621,7 @@ const UserCenter: React.FC = () => {
         localStorage.setItem(SELECTED_BACKEND_KEY, optimalBackend.id)
         console.log(`Selected optimal backend: ${optimalBackend.name} (${optimalBackend.lastPing}ms)`)
       }
-      
+
       return results
     } catch (error) {
       console.error('Backend testing and selection failed:', error)
@@ -673,12 +699,9 @@ const UserCenter: React.FC = () => {
   ])
 
   const handleWebLogin = async () => {
-    if (!navigator.onLine) {
-      setErrors(prev => ({ ...prev, userInfo: '网络连接已断开，请检查网络后重试' }))
-      return
-    }
+    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
 
-    if (!apiBaseUrl) {
+    if (!baseUrl) {
       setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
       return
     }
@@ -695,7 +718,8 @@ const UserCenter: React.FC = () => {
       webLoginStateRef.current = state
       localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
 
-      const response = await fetch(`${apiBaseUrl}/passport/auth/thirdPartyLogin/init`, {
+      // thirdPartyLogin/init 是白名单接口，可以直连（使用 /api/v3 路径）
+      const response = await fetch(`${baseUrl}/api/v3/passport/auth/thirdPartyLogin/init`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -747,22 +771,17 @@ const UserCenter: React.FC = () => {
     }
   }
 
-  // 登录处理
+  // 登录处理（使用 V3 网关）
   const handleTelegramLogin = async () => {
     if (!email.trim()) {
       setErrors(prev => ({ ...prev, userInfo: '请输入邮箱地址' }))
       return
     }
-    
+
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
       setErrors(prev => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
-      return
-    }
-
-    if (!navigator.onLine) {
-      setErrors(prev => ({ ...prev, userInfo: '网络连接已断开，请检查网络后重试' }))
       return
     }
 
@@ -771,20 +790,21 @@ const UserCenter: React.FC = () => {
     setErrors(prev => ({ ...prev, userInfo: null }))
     setTelegramStatus('idle')
 
+    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+
     try {
-      const response = await fetch(`${apiBaseUrl}/passport/auth/loginWithTelegram`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await callV3Gateway(
+        baseUrl,
+        'passport/auth/loginWithTelegram',
+        'POST',
+        { email: email.trim() },
+        {
           'User-Agent': API_USER_AGENT
-        },
-        body: JSON.stringify({
-          email: email.trim()
-        })
-      })
+        }
+      )
 
       const data = await response.json()
-      
+
       if (!response.ok) {
         throw new Error(data.message || '请求失败')
       }
@@ -813,7 +833,7 @@ const UserCenter: React.FC = () => {
     }
   }
 
-  // Poll Status
+  // Poll Status（使用 V3 网关）
   useEffect(() => {
     if (!telegramToken || telegramStatus !== 'pending') {
         if (pollingIntervalRef.current) {
@@ -823,18 +843,24 @@ const UserCenter: React.FC = () => {
         return
     }
 
+    const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+
     const checkStatus = async () => {
         try {
-	            const response = await fetch(`${apiBaseUrl}/passport/auth/checkTelegramLogin?token=${telegramToken}`, {
-	              headers: {
-	                'User-Agent': API_USER_AGENT
-	              }
-	            })
-	            const data = await response.json()
-            
+            const response = await callV3Gateway(
+              baseUrl,
+              'passport/auth/checkTelegramLogin',
+              'GET',
+              { token: telegramToken },
+              {
+                'User-Agent': API_USER_AGENT
+              }
+            )
+            const data = await response.json()
+
             if (response.ok && data.data) {
                 const { status, verify_code } = data.data
-                
+
                 if (status === 'approved' && verify_code) {
                     setTelegramStatus('approved')
                     // Authenticate with verify code
@@ -857,18 +883,24 @@ const UserCenter: React.FC = () => {
             clearInterval(pollingIntervalRef.current)
         }
     }
-  }, [telegramToken, telegramStatus, apiBaseUrl])
+  }, [telegramToken, telegramStatus, activeBackend])
 
-  // Token Login (Final Step)
+  // Token Login (Final Step)（使用 V3 网关）
   const performTokenLogin = async (verifyCode: string) => {
       setLoading(prev => ({ ...prev, userInfo: true }))
+      const baseUrl = activeBackend?.url?.replace(/\/+$/, '') || ''
+
       try {
-	        const response = await fetch(`${apiBaseUrl}/passport/auth/token2Login?verify=${verifyCode}`, {
-	          headers: {
-	            'User-Agent': API_USER_AGENT
-	          }
-	        })
-        
+        const response = await callV3Gateway(
+          baseUrl,
+          'passport/auth/token2Login',
+          'GET',
+          { verify: verifyCode },
+          {
+            'User-Agent': API_USER_AGENT
+          }
+        )
+
         if (!response.ok) {
            throw new Error('验证登录失败')
         }
@@ -1024,11 +1056,11 @@ rules:
     }
   }, [loginMode, telegramLoginEnabled])
 
-  // 初始化
+  // 初始化（只运行一次）
   useEffect(() => {
     // Initialize backend list
     initializeBackendList()
-    
+
     // 检查并加载保存的token
     const token = tokenManager.getToken()
     if (token) {
@@ -1039,51 +1071,57 @@ rules:
       // 未登录状态，自动测试服务器连接
       testServerConnection()
     }
-    
+
     // 自动填充上次登录的邮箱
     const savedEmail = localStorage.getItem('userEmail')
-    if (savedEmail && !email) {
+    if (savedEmail) {
       setEmail(savedEmail)
     }
-  }, [fetchUserInfo, fetchAnnouncements, testServerConnection, initializeBackendList])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // 空依赖数组，只在组件挂载时运行一次
 
   // Sync backendsRef with backends state
   useEffect(() => {
     backendsRef.current = backends
   }, [backends])
 
-  // Auto-test backends after initialization and every 10 seconds
+  // Auto-test backends: 初始测试一次，只有所有后端都不可用时才每5秒刷新
   useEffect(() => {
     if (!isLoggedIn && backends.length > 0 && !hasStartedAutoTest.current) {
       hasStartedAutoTest.current = true
-      console.log('Starting auto-test for backends...') // 调试信息
-      
+
       // Clear any existing timers
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
-      
-      // Initial test after 1 second
-      const initialTimer = setTimeout(() => {
-        console.log('Initial backend test after 1 second...') // 调试信息
+
+      // Initial test after 500ms
+      const initialTimer = setTimeout(async () => {
         const currentBackends = backendsRef.current
-        // Only test latency automatically; do not auto-switch backends
         if (currentBackends.length >= 1) {
-          testAllBackends()
+          const results = await testAllBackends()
+          // 检查是否有任何一个后端可用
+          const hasActiveBackend = results?.some(r => r.isActive) ?? false
+
+          // 只有所有后端都不可用时，才启动定时刷新
+          if (!hasActiveBackend) {
+            intervalRef.current = setInterval(async () => {
+              const latestBackends = backendsRef.current
+              if (latestBackends.length >= 1) {
+                const retryResults = await testAllBackends()
+                // 如果有后端可用了，停止刷新
+                const nowHasActive = retryResults?.some(r => r.isActive) ?? false
+                if (nowHasActive && intervalRef.current) {
+                  clearInterval(intervalRef.current)
+                  intervalRef.current = null
+                }
+              }
+            }, 5000) // 所有后端不可用时每5秒刷新
+          }
         }
-      }, 1000)
-      
-      // Then test every 10 seconds
-      intervalRef.current = setInterval(() => {
-        console.log('Auto-testing backends every 10 seconds...') // 调试信息
-        const currentBackends = backendsRef.current
-        // Only test latency automatically; do not auto-switch backends
-        if (currentBackends.length >= 1) {
-          testAllBackends()
-        }
-      }, 10000) // 10 seconds
-      
+      }, 500)
+
       return () => {
         clearTimeout(initialTimer)
         if (intervalRef.current) {
@@ -1092,7 +1130,7 @@ rules:
         }
       }
     }
-    
+
     // Reset when user logs in
     if (isLoggedIn) {
       hasStartedAutoTest.current = false
@@ -1132,7 +1170,7 @@ rules:
     }
   }, [isLoggedIn])
 
-  // 网络状态监听
+  // 网络状态监听 - 仅监听恢复在线事件，离线状态由实际请求失败来判断
   useEffect(() => {
     const handleOnline = () => {
       setNetworkStatus({
@@ -1142,16 +1180,10 @@ rules:
       // 移除自动刷新，让用户手动点击刷新
     }
 
-    const handleOffline = () => {
-      setNetworkStatus(prev => ({ ...prev, isOnline: false }))
-    }
-
     window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
 
     return () => {
       window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
     }
   }, [])
 

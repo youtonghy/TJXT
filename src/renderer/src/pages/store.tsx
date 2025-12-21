@@ -4,7 +4,7 @@ import { Button, Card, CardBody, CardFooter, CardHeader, Divider, Input, Modal, 
 import { useTranslation } from 'react-i18next'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
-import { getActiveBackendApiBaseUrl } from '@renderer/utils/user-center-backend'
+import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import dayjs from '@renderer/utils/dayjs'
 import { IoCheckmark, IoChevronBack, IoChevronForward } from 'react-icons/io5'
@@ -102,7 +102,10 @@ const Store: React.FC = () => {
   const navigate = useNavigate()
   const { appConfig } = useAppConfig()
   const auth = useMemo(() => createUserAuthUtils(appConfig), [appConfig])
-  const apiBaseUrl = useMemo(() => getActiveBackendApiBaseUrl(appConfig), [appConfig])
+  const getBaseUrl = useCallback(() => {
+    const backend = getActiveBackend(appConfig)
+    return backend?.url?.replace(/\/+$/, '') || ''
+  }, [appConfig])
 
   const [loading, setLoading] = useState(false)
   const [plans, setPlans] = useState<Plan[]>([])
@@ -172,11 +175,6 @@ const Store: React.FC = () => {
   }, [])
 
   // Helpers
-  const authHeaders = useCallback((): HeadersInit => {
-    const token = auth.getToken()
-    return { 'Authorization': token || '', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': API_USER_AGENT }
-  }, [auth])
-
   const showErrorBanner = useCallback((raw: string) => {
     let msg = (raw || '').trim()
     try {
@@ -205,13 +203,16 @@ const Store: React.FC = () => {
   const cancelCurrentOrder = useCallback(async (): Promise<void> => {
     if (!tradeNo) return
     try {
-      const body = new URLSearchParams()
-      body.set('trade_no', tradeNo)
-      const res = await fetch(`${apiBaseUrl}/user/order/cancel`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/order/cancel',
+        'POST',
+        { trade_no: tradeNo },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) {
         const text = await res.text().catch(() => '')
         if (res.status >= 500) showErrorBanner(text)
@@ -223,7 +224,7 @@ const Store: React.FC = () => {
       setTradeNo(null)
       setPhase('select')
     }
-  }, [authHeaders, apiBaseUrl, tradeNo])
+  }, [auth, getBaseUrl, tradeNo, showErrorBanner])
 
   const redeemGiftcard = async (): Promise<void> => {
     const code = redeemCode.trim()
@@ -232,13 +233,16 @@ const Store: React.FC = () => {
     setRedeemMsg(null)
     setRedeemOk(null)
     try {
-      const body = new URLSearchParams()
-      body.set('giftcard', code)
-      const res = await fetch(`${apiBaseUrl}/user/redeemgiftcard`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/redeemgiftcard',
+        'POST',
+        { giftcard: code },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       const text = await res.text().catch(() => '')
       if (!res.ok) {
         if (res.status >= 500) {
@@ -273,7 +277,7 @@ const Store: React.FC = () => {
     }
   }
 
-  
+
 
   useEffect(() => {
     if (!auth.isLoggedIn()) {
@@ -285,7 +289,16 @@ const Store: React.FC = () => {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${apiBaseUrl}/user/plan/fetch`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } })
+        const res = await callV3Gateway(
+          getBaseUrl(),
+          'user/plan/fetch',
+          'GET',
+          undefined,
+          {
+            'Authorization': auth.getToken() || '',
+            'User-Agent': API_USER_AGENT
+          }
+        )
         if (res.status === 401) {
           navigate('/user-center', { replace: true })
           return
@@ -299,7 +312,7 @@ const Store: React.FC = () => {
       }
     }
     fetchPlans()
-  }, [auth, apiBaseUrl, navigate, t])
+  }, [auth, getBaseUrl, navigate, t])
 
   useEffect(() => {
     // Update arrow controls after plans render
@@ -323,13 +336,16 @@ const Store: React.FC = () => {
   const validateCoupon = async (): Promise<void> => {
     if (!coupon.trim()) return setCouponMsg(null)
     try {
-      const body = new URLSearchParams()
-      body.set('code', coupon.trim())
-      const res = await fetch(`${apiBaseUrl}/user/coupon/check`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/coupon/check',
+        'POST',
+        { code: coupon.trim() },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) {
         if (res.status >= 500) {
           const text = await res.text().catch(() => '')
@@ -361,15 +377,22 @@ const Store: React.FC = () => {
     }
     setSubmitting(true)
     try {
-      const body = new URLSearchParams()
-      body.set('period', selectedPeriod)
-      body.set('plan_id', String(currentPlan.id))
-      if (coupon.trim()) body.set('coupon', coupon.trim())
-      const res = await fetch(`${apiBaseUrl}/user/order/save`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const params: Record<string, unknown> = {
+        period: selectedPeriod,
+        plan_id: currentPlan.id
+      }
+      if (coupon.trim()) params.coupon = coupon.trim()
+
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/order/save',
+        'POST',
+        params,
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) {
         const txt = await res.text().catch(() => '')
         if (res.status >= 500) { showErrorBanner(txt); return }
@@ -391,9 +414,13 @@ const Store: React.FC = () => {
 
   const loadPaymentData = async (tn: string): Promise<void> => {
     try {
+      const headers = {
+        'Authorization': auth.getToken() || '',
+        'User-Agent': API_USER_AGENT
+      }
       const [detailRes, pmRes] = await Promise.all([
-        fetch(`${apiBaseUrl}/user/order/detail?trade_no=${encodeURIComponent(tn)}`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } }),
-        fetch(`${apiBaseUrl}/user/order/getPaymentMethod`, { headers: { Authorization: auth.getToken() || '', 'User-Agent': API_USER_AGENT } })
+        callV3Gateway(getBaseUrl(), 'user/order/detail', 'GET', { trade_no: tn }, headers),
+        callV3Gateway(getBaseUrl(), 'user/order/getPaymentMethod', 'GET', undefined, headers)
       ])
       if (detailRes.status >= 500) { const text = await detailRes.text().catch(() => ''); showErrorBanner(text) }
       if (pmRes.status >= 500) { const text = await pmRes.text().catch(() => ''); showErrorBanner(text) }
@@ -409,15 +436,19 @@ const Store: React.FC = () => {
     if (!tradeNo) return
     setCheckingOut(true)
     try {
-      const body = new URLSearchParams()
-      body.set('trade_no', tradeNo)
-      if (methodId != null) body.set('payment_id', String(methodId))
+      const params: Record<string, unknown> = { trade_no: tradeNo }
+      if (methodId != null) params.payment_id = methodId
 
-      const res = await fetch(`${apiBaseUrl}/user/order/checkout`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/order/checkout',
+        'POST',
+        params,
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (res.status >= 500) {
         const text500 = await res.text().catch(() => '')
         showErrorBanner(text500)

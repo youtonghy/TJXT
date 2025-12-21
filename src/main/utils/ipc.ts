@@ -102,14 +102,21 @@ function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-e
       return await fn(...args)
     } catch (e) {
       if (e && typeof e === 'object') {
-        if ('message' in e) {
-          return { invokeError: e.message }
-        } else {
-          return { invokeError: JSON.stringify(e) }
+        if ('message' in e && typeof (e as { message: unknown }).message === 'string') {
+          return { invokeError: (e as { message: string }).message }
         }
+        // Check for empty object - avoid showing "{}" as error
+        const keys = Object.keys(e)
+        if (keys.length === 0) {
+          return { invokeError: 'Unknown Error' }
+        }
+        return { invokeError: JSON.stringify(e) }
       }
-      if (e instanceof Error || typeof e === 'string') {
-        return { invokeError: e }
+      if (e instanceof Error) {
+        return { invokeError: e.message || 'Unknown Error' }
+      }
+      if (typeof e === 'string') {
+        return { invokeError: e || 'Unknown Error' }
       }
       return { invokeError: 'Unknown Error' }
     }

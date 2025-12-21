@@ -66,13 +66,48 @@ HTTP 状态码说明：
 
 # API V3
 
-`/api/v3` 与 `/api/v1` 保持完全一致的业务行为（内部直接复用 V1 控制器），但会尽量避免把参数放在 URL 路径中；需要传参时统一放到请求参数里（query/form/json 均可）。
+`/api/v3` 继续复用 V1 控制器，业务行为保持一致，但新版本默认禁止直接访问绝大多数 `/api/v3/*` 路径；客户端需要通过 `/api/v3/server` 网关转发。仅回调/授权相关接口允许直连（见下方白名单）。
 
-使用方式：
-- 绝大多数接口：把 `/api/v1/...` 直接替换为 `/api/v3/...`，其余请求保持不变
-- 仅以下 2 个接口在 V3 下改变了“路径传参”的形式：
-  - V1：`ANY /api/v1/server/{class}/{action}` → V3：`ANY /api/v3/server`，通过请求参数传递 `class`、`action`
-  - V1：`GET|POST /api/v1/guest/payment/notify/{method}/{uuid}` → V3：`GET|POST /api/v3/guest/payment/notify`，通过请求参数传递 `method`、`uuid`
+### V3 网关调用（统一入口）
+
+**ANY** `/api/v3/server`
+
+**请求参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| endpoint | string | 是 | 目标接口路径（不包含 `/api/v3/` 前缀），例如 `passport/auth/login` |
+| method | string | 否 | HTTP 方法，默认 `GET`；允许 `GET/POST/PUT/PATCH/DELETE/HEAD` |
+| params | object|string | 否 | 目标接口参数；可传对象或 JSON 字符串。不传时使用除 `endpoint/method/params` 外的请求参数 |
+
+补充说明：
+- `endpoint` 不能为 `server` 或 `server/...`，不能包含 `..`，仅允许字母、数字、下划线、`-`、`/`
+- `GET/HEAD` 请求参数会作为 query，其它方法会转换为 JSON body
+- 响应体与目标接口保持一致
+
+**示例：**
+```http
+POST /api/v3/server
+Content-Type: application/json
+
+{
+  "endpoint": "passport/auth/login",
+  "method": "POST",
+  "params": {
+    "email": "user@example.com",
+    "password": "secret"
+  }
+}
+```
+
+### 允许直连的 V3 接口
+
+以下路径不需要通过 `/api/v3/server`：
+- `/api/v3/guest/payment/notify`（通过请求参数传递 `method`、`uuid`）
+- `/api/v3/guest/telegram/webhook`
+- `/api/v3/passport/auth/thirdPartyLogin`
+- `/api/v3/passport/auth/thirdPartyLogin/init`
+- `/api/v3/passport/auth/thirdPartyLogin/approve`
+- `/api/v3/passport/auth/thirdPartyLogin/reject`
 
 # API V1
 
@@ -253,6 +288,14 @@ HTTP 状态码说明：
 ### 第三方应用跳转登录
 
 用途：第三方应用发起授权登录，用户在浏览器中登录并授权后跳转回应用并携带 access token。应用名称可在 `app/Http/Controllers/V1/Admin/UserController.php` 中调整。
+
+V3 路径与 V1 保持一致，仅将 `/api/v1/` 替换为 `/api/v3/`，例如：`/api/v3/passport/auth/thirdPartyLogin/init`。  
+V3 已完整支持以下接口：  
+`/api/v3/passport/auth/thirdPartyLogin/init`  
+`/api/v3/passport/auth/thirdPartyLogin`  
+`/api/v3/passport/auth/thirdPartyLogin/approve`  
+`/api/v3/passport/auth/thirdPartyLogin/reject`  
+建议在 V3 中发起 `init`，返回的授权 URL 会对应 V3 版本的授权/回调流程。
 
 **流程说明：**
 1. 应用调用初始化接口获取授权页面 URL

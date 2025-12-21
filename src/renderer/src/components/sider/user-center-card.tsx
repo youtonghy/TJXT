@@ -10,6 +10,7 @@ import { calcPercent, calcTraffic } from '@renderer/utils/calc'
 import dayjs from '@renderer/utils/dayjs'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
+import { callV3Gateway } from '@renderer/utils/user-center-backend'
 
 interface Props {
   iconOnly?: boolean
@@ -60,14 +61,17 @@ const UserCenterCard: React.FC<Props> = (props) => {
         const token = authUtils.getToken()
         if (!token) return
 
-        const apiBaseUrl = authUtils.getApiBaseUrl()
-        const resp = await fetch(`${apiBaseUrl}/user/getSubscribe`, {
-          headers: {
+        const baseUrl = authUtils.getBaseUrl()
+        const resp = await callV3Gateway(
+          baseUrl,
+          'user/getSubscribe',
+          'GET',
+          undefined,
+          {
             'Authorization': token,
-            'Content-Type': 'application/json',
             'User-Agent': API_USER_AGENT
           }
-        })
+        )
         if (!resp.ok) return
         const data = await resp.json()
         const d = data?.data || data

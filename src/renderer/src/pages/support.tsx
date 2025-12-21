@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Card, CardBody, CardHeader, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spinner, Textarea, Chip } from '@heroui/react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
-import { getActiveBackendApiBaseUrl } from '@renderer/utils/user-center-backend'
+import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import dayjs from '@renderer/utils/dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -46,7 +46,10 @@ const Support: React.FC = () => {
   const navigate = useNavigate()
   const { appConfig } = useAppConfig()
   const auth = useMemo(() => createUserAuthUtils(appConfig), [appConfig])
-  const getBaseUrl = useCallback(() => getActiveBackendApiBaseUrl(appConfig), [appConfig])
+  const getBaseUrl = useCallback(() => {
+    const backend = getActiveBackend(appConfig)
+    return backend?.url?.replace(/\/+$/, '') || ''
+  }, [appConfig])
 
   const [loadingList, setLoadingList] = useState(false)
   const [tickets, setTickets] = useState<TicketItem[]>([])
@@ -78,15 +81,6 @@ const Support: React.FC = () => {
       navigate('/user-center', { replace: true })
     }
   }, [auth, navigate, t])
-
-  const authHeaders = useCallback((): HeadersInit => {
-    const token = auth.getToken()
-    return {
-      'Authorization': token || '',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': API_USER_AGENT
-    }
-  }, [auth])
 
   const handleHttpError = async (res: Response): Promise<never> => {
     // Handle 401 Unauthorized - clear token and redirect to login
@@ -127,13 +121,16 @@ const Support: React.FC = () => {
   const fetchTickets = useCallback(async () => {
     setLoadingList(true)
     try {
-      const res = await fetch(`${getBaseUrl()}/user/ticket/fetch`, {
-        method: 'GET',
-        headers: {
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/ticket/fetch',
+        'GET',
+        undefined,
+        {
           'Authorization': auth.getToken() || '',
           'User-Agent': API_USER_AGENT
         }
-      })
+      )
       if (!res.ok) return handleHttpError(res)
       const data = await res.json()
       setTickets((data.data || []) as TicketItem[])
@@ -155,13 +152,16 @@ const Support: React.FC = () => {
     setDetailLoading(true)
     setReplyText('')
     try {
-      const url = `${getBaseUrl()}/user/ticket/fetch?id=${encodeURIComponent(id)}`
-      const res = await fetch(url, {
-        headers: {
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/ticket/fetch',
+        'GET',
+        { id },
+        {
           'Authorization': auth.getToken() || '',
           'User-Agent': API_USER_AGENT
         }
-      })
+      )
       if (!res.ok) return handleHttpError(res)
       const data = await res.json()
       setDetail(data.data as TicketDetailResponse)
@@ -190,15 +190,20 @@ const Support: React.FC = () => {
     if (!s || !m) return
     setSubmitting(true)
     try {
-      const body = new URLSearchParams()
-      body.set('subject', s)
-      body.set('level', String(levelRef.current ?? 0))
-      body.set('message', m)
-      const res = await fetch(`${getBaseUrl()}/user/ticket/save`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/ticket/save',
+        'POST',
+        {
+          subject: s,
+          level: levelRef.current ?? 0,
+          message: m
+        },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) return handleHttpError(res)
       if (!subjectArg) setSubject('')
       if (!messageArg) setMessage('')
@@ -231,14 +236,19 @@ const Support: React.FC = () => {
     if (!detail || !replyText.trim()) return
     setReplySending(true)
     try {
-      const body = new URLSearchParams()
-      body.set('id', String(detail.id))
-      body.set('message', replyText.trim())
-      const res = await fetch(`${getBaseUrl()}/user/ticket/reply`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/ticket/reply',
+        'POST',
+        {
+          id: detail.id,
+          message: replyText.trim()
+        },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) return handleHttpError(res)
       setReplyText('')
       // Refresh detail
@@ -255,13 +265,16 @@ const Support: React.FC = () => {
     if (!detail) return
     setClosing(true)
     try {
-      const body = new URLSearchParams()
-      body.set('id', String(detail.id))
-      const res = await fetch(`${getBaseUrl()}/user/ticket/close`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: body.toString()
-      })
+      const res = await callV3Gateway(
+        getBaseUrl(),
+        'user/ticket/close',
+        'POST',
+        { id: detail.id },
+        {
+          'Authorization': auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        }
+      )
       if (!res.ok) return handleHttpError(res)
       setDetailOpen(false)
       setDetail(null)
