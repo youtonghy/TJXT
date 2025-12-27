@@ -10,7 +10,6 @@ import yaml from 'yaml'
 import { defaultProfile } from '../utils/template'
 import { subStorePort } from '../resolve/server'
 import { join } from 'path'
-import { app } from 'electron'
 
 let profileConfig: IProfileConfig // profile.yaml
 

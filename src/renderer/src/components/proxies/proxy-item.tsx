@@ -14,11 +14,12 @@ interface Props {
   onSelect: (group: string, proxy: string) => void
   selected: boolean
   isGroupTesting?: boolean
+  serverRate?: number
 }
 
 const ProxyItem: React.FC<Props> = (props) => {
   const { t } = useTranslation()
-  const { mutateProxies, proxyDisplayMode, group, proxy, selected, onSelect, onProxyDelay, isGroupTesting = false } = props
+  const { mutateProxies, proxyDisplayMode, group, proxy, selected, onSelect, onProxyDelay, isGroupTesting = false, serverRate } = props
 
   const delay = useMemo(() => {
     if (proxy.history.length > 0) {
@@ -96,16 +97,10 @@ const ProxyItem: React.FC<Props> = (props) => {
               )}
             </div>
             <div className="flex justify-between items-center pl-1">
-              <div className="flex gap-1 items-center">
-                <div className="text-foreground-400 text-xs bg-default-100 px-1 rounded-md">
-                  {proxy.type}
-                </div>
-                {['tfo', 'udp', 'xudp', 'mptcp', 'smux'].map(protocol => 
-                  proxy[protocol as keyof IMihomoProxy] && (
-                    <div key={protocol} className="text-foreground-400 text-xs bg-default-100 px-1 rounded-md">
-                      {protocol}
-                    </div>
-                  )
+              <div className="flex gap-2 items-center text-foreground-400 text-xs">
+                <span>{proxy.type}</span>
+                {serverRate !== undefined && serverRate !== 1 && (
+                  <span className="text-warning">x{serverRate}</span>
                 )}
               </div>
               <Button

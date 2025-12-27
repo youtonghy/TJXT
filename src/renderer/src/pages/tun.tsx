@@ -5,7 +5,7 @@
 
 // ======================== 导入区 ========================
 // React 核心
-import { Key, useEffect, useMemo, useState } from 'react'
+import { Key, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
@@ -18,10 +18,8 @@ import SettingItem from '@renderer/components/base/base-setting-item'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 import { manualGrantCorePermition, restartCore, setupFirewall } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
-import React, { Key, useState } from 'react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { MdDeleteForever } from 'react-icons/md'
-import { useTranslation } from 'react-i18next'
 
 const Tun: React.FC = () => {
   const { t } = useTranslation()

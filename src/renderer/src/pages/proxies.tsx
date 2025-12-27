@@ -30,6 +30,10 @@ import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useGroups } from '@renderer/hooks/use-groups'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 
+// API Service
+import { createApiService } from '@renderer/utils/api-service'
+import { createUserAuthUtils } from '@renderer/utils/user-auth'
+
 // 工具函数
 import {
   getImageDataURL,
@@ -45,13 +49,15 @@ const GROUP_EXPAND_STATE_KEY = 'proxy_group_expand_state'
 
 // ======================== 自定义 Hook ========================
 // 管理代理组展开状态
-const useProxyState = (groups: IMihomoMixedGroup[]): {
-  virtuosoRef: React.RefObject<GroupedVirtuosoHandle>;
-  isOpen: boolean[];
-  setIsOpen: React.Dispatch<React.SetStateAction<boolean[]>>;
+const useProxyState = (
+  groups: IMihomoMixedGroup[]
+): {
+  virtuosoRef: React.RefObject<GroupedVirtuosoHandle>
+  isOpen: boolean[]
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean[]>>
 } => {
   const virtuosoRef = useRef<GroupedVirtuosoHandle>(null!)
-  
+
   // 初始化展开状态
   const [isOpen, setIsOpen] = useState<boolean[]>(() => {
     try {
@@ -94,13 +100,14 @@ const Proxies: React.FC = () => {
     proxyCols = 'auto',
     delayTestConcurrency = 50
   } = appConfig || {}
-  
+
   // -------- 状态定义 --------
   const [cols, setCols] = useState(1)
   const { virtuosoRef, isOpen, setIsOpen } = useProxyState(groups)
   const [delaying, setDelaying] = useState(Array(groups.length).fill(false))
   const [proxyDelaying, setProxyDelaying] = useState<Record<string, boolean>>({})
   const [searchValue, setSearchValue] = useState(Array(groups.length).fill(''))
+  const [serverRates, setServerRates] = useState<Record<string, number>>({})
 
   // -------- 计算属性 --------
   // 计算代理组数量和过滤代理列表
@@ -138,88 +145,94 @@ const Proxies: React.FC = () => {
 
   // -------- 事件处理函数 --------
   // 切换代理
-  const onChangeProxy = useCallback(async (group: string, proxy: string): Promise<void> => {
-    await mihomoChangeProxy(group, proxy)
-    if (autoCloseConnection) {
-      await mihomoCloseAllConnections()
-    }
-    mutate()
-  }, [autoCloseConnection, mutate])
+  const onChangeProxy = useCallback(
+    async (group: string, proxy: string): Promise<void> => {
+      await mihomoChangeProxy(group, proxy)
+      if (autoCloseConnection) {
+        await mihomoCloseAllConnections()
+      }
+      mutate()
+    },
+    [autoCloseConnection, mutate]
+  )
 
   const onProxyDelay = useCallback(async (proxy: string, url?: string): Promise<IMihomoDelay> => {
     return await mihomoProxyDelay(proxy, url)
   }, [])
 
-  const onGroupDelay = useCallback(async (index: number): Promise<void> => {
-    if (allProxies[index].length === 0) {
-      setIsOpen((prev) => {
-        const newOpen = [...prev]
-        newOpen[index] = true
-        return newOpen
-      })
-    }
-    setDelaying((prev) => {
-      const newDelaying = [...prev]
-      newDelaying[index] = true
-      return newDelaying
-    })
-
-    // 本组测试状态
-    const groupProxies = allProxies[index]
-    setProxyDelaying((prev) => {
-      const newProxyDelaying = { ...prev }
-      groupProxies.forEach(proxy => {
-        newProxyDelaying[proxy.name] = true
-      })
-      return newProxyDelaying
-    })
-
-    try {
-      // 限制并发数量
-      const result: Promise<void>[] = []
-      const runningList: Promise<void>[] = []
-      for (const proxy of allProxies[index]) {
-        const promise = Promise.resolve().then(async () => {
-          try {
-            await mihomoProxyDelay(proxy.name, groups[index].testUrl)
-          } catch {
-            // ignore
-          } finally {
-            // 立即更新状态
-            setProxyDelaying((prev) => {
-              const newProxyDelaying = { ...prev }
-              delete newProxyDelaying[proxy.name]
-              return newProxyDelaying
-            })
-            mutate()
-          }
+  const onGroupDelay = useCallback(
+    async (index: number): Promise<void> => {
+      if (allProxies[index].length === 0) {
+        setIsOpen((prev) => {
+          const newOpen = [...prev]
+          newOpen[index] = true
+          return newOpen
         })
-        result.push(promise)
-        const running = promise.then(() => {
-          runningList.splice(runningList.indexOf(running), 1)
-        })
-        runningList.push(running)
-        if (runningList.length >= (delayTestConcurrency || 50)) {
-          await Promise.race(runningList)
-        }
       }
-      await Promise.all(result)
-    } finally {
       setDelaying((prev) => {
         const newDelaying = [...prev]
-        newDelaying[index] = false
+        newDelaying[index] = true
         return newDelaying
       })
-      // 状态清理
+
+      // 本组测试状态
+      const groupProxies = allProxies[index]
       setProxyDelaying((prev) => {
         const newProxyDelaying = { ...prev }
-        groupProxies.forEach(proxy => {
-          delete newProxyDelaying[proxy.name]
+        groupProxies.forEach((proxy) => {
+          newProxyDelaying[proxy.name] = true
         })
         return newProxyDelaying
       })
-    }
-  }, [allProxies, groups, delayTestConcurrency, mutate])
+
+      try {
+        // 限制并发数量
+        const result: Promise<void>[] = []
+        const runningList: Promise<void>[] = []
+        for (const proxy of allProxies[index]) {
+          const promise = Promise.resolve().then(async () => {
+            try {
+              await mihomoProxyDelay(proxy.name, groups[index].testUrl)
+            } catch {
+              // ignore
+            } finally {
+              // 立即更新状态
+              setProxyDelaying((prev) => {
+                const newProxyDelaying = { ...prev }
+                delete newProxyDelaying[proxy.name]
+                return newProxyDelaying
+              })
+              mutate()
+            }
+          })
+          result.push(promise)
+          const running = promise.then(() => {
+            runningList.splice(runningList.indexOf(running), 1)
+          })
+          runningList.push(running)
+          if (runningList.length >= (delayTestConcurrency || 50)) {
+            await Promise.race(runningList)
+          }
+        }
+        await Promise.all(result)
+      } finally {
+        setDelaying((prev) => {
+          const newDelaying = [...prev]
+          newDelaying[index] = false
+          return newDelaying
+        })
+        // 状态清理
+        setProxyDelaying((prev) => {
+          const newProxyDelaying = { ...prev }
+          groupProxies.forEach((proxy) => {
+            delete newProxyDelaying[proxy.name]
+          })
+          return newProxyDelaying
+        })
+      }
+    },
+    [allProxies, groups, delayTestConcurrency, mutate]
+  )
 
   const calcCols = useCallback((): number => {
     if (proxyCols !== 'auto') {
@@ -238,11 +251,38 @@ const Proxies: React.FC = () => {
 
     handleResize() // 初始化
     window.addEventListener('resize', handleResize)
-    
+
     return (): void => {
       window.removeEventListener('resize', handleResize)
     }
   }, [calcCols])
+
+  // 获取服务器倍率信息
+  useEffect(() => {
+    const fetchServerRates = async (): Promise<void> => {
+      try {
+        const authUtils = createUserAuthUtils(appConfig)
+        if (!authUtils.isLoggedIn()) return
+
+        const baseUrl = authUtils.getBaseUrl()
+        const authHeader = authUtils.getAuthHeaderValue()
+        if (!baseUrl || !authHeader) return
+
+        const apiService = createApiService(baseUrl, authHeader)
+        const servers = await apiService.getServers()
+
+        const ratesMap: Record<string, number> = {}
+        servers.forEach((server) => {
+          ratesMap[server.name] = server.rate
+        })
+        setServerRates(ratesMap)
+      } catch (error) {
+        console.debug('Failed to fetch server rates:', error)
+      }
+    }
+
+    fetchServerRates()
+  }, [appConfig])
 
   return (
     <BasePage
@@ -389,7 +429,7 @@ const Proxies: React.FC = () => {
                             </Chip>
                           )}
                           <CollapseInput
-                              title={t('proxies.search.placeholder')}
+                            title={t('proxies.search.placeholder')}
                             value={searchValue[index]}
                             onValueChange={(v) => {
                               setSearchValue((prev) => {
@@ -400,7 +440,7 @@ const Proxies: React.FC = () => {
                             }}
                           />
                           <Button
-                              title={t('proxies.locate')}
+                            title={t('proxies.locate')}
                             variant="light"
                             size="sm"
                             isIconOnly
@@ -430,7 +470,7 @@ const Proxies: React.FC = () => {
                             <FaLocationCrosshairs className="text-lg text-foreground-500" />
                           </Button>
                           <Button
-                              title={t('proxies.delay.test')}
+                            title={t('proxies.delay.test')}
                             variant="light"
                             isLoading={delaying[index]}
                             size="sm"
@@ -482,7 +522,10 @@ const Proxies: React.FC = () => {
                           allProxies[groupIndex][innerIndex * cols + i]?.name ===
                           groups[groupIndex].now
                         }
-                        isGroupTesting={!!proxyDelaying[allProxies[groupIndex][innerIndex * cols + i].name]}
+                        isGroupTesting={
+                          !!proxyDelaying[allProxies[groupIndex][innerIndex * cols + i].name]
+                        }
+                        serverRate={serverRates[allProxies[groupIndex][innerIndex * cols + i].name]}
                       />
                     )
                   })}

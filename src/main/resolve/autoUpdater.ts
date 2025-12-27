@@ -9,7 +9,7 @@ import { existsSync } from 'fs'
 import os from 'os'
 import { exec, execSync, spawn } from 'child_process'
 import { promisify } from 'util'
-import { latestYmlUrl, REPO_SLUG, downloadBase, TAG_PREFIX } from '../../shared/constants'
+import { latestYmlUrl, REPO_SLUG, TAG_PREFIX } from '../../shared/constants'
 
 export async function checkUpdate(): Promise<IAppVersion | undefined> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
@@ -50,7 +50,6 @@ export async function checkUpdate(): Promise<IAppVersion | undefined> {
 
 export async function downloadAndInstallUpdate(version: string): Promise<void> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
-  const preferredBaseUrl = downloadBase(version)
   const baseName = app.getName() // should match electron-builder ${name}
   const fileMap = {
     'win32-x64': `${baseName}-windows-${version}-x64-setup.exe`,

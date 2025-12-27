@@ -13,6 +13,8 @@ import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHe
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
+import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import {
   getAllBackends,
   getDefaultBackend,

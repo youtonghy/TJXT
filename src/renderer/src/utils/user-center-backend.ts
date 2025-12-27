@@ -29,12 +29,17 @@ export const normalizeBackendUrl = (value?: string): string => {
 
 const getBackendSeeds = (): BackendSeed[] => {
   if (!Array.isArray(backendSeedsRaw)) return []
-  return backendSeedsRaw.filter((item): item is BackendSeed => {
-    return Boolean(item)
-      && typeof item.id === 'string'
-      && typeof item.name === 'string'
-      && typeof item.url === 'string'
-  })
+  return backendSeedsRaw
+    .filter((item) => {
+      if (!item) return false
+      const maybe = item as unknown as Partial<BackendSeed>
+      return (
+        typeof maybe.id === 'string' &&
+        typeof maybe.name === 'string' &&
+        typeof maybe.url === 'string'
+      )
+    })
+    .map((item) => item as unknown as BackendSeed)
 }
 
 const mergeBackendsWithSeeds = (existing: IUserCenterBackend[] = []): IUserCenterBackend[] => {

@@ -5,7 +5,7 @@
 
 // ======================== 导入区 ========================
 // React 核心
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
@@ -20,7 +20,6 @@ import {
 } from '@heroui/react'
 import BasePage from '@renderer/components/base/base-page'
 import { getFilePath, readTextFile } from '@renderer/utils/ipc'
-import { useEffect, useRef, useState } from 'react'
 import { MdContentPaste } from 'react-icons/md'
 import {
   DndContext,
@@ -36,7 +35,6 @@ import OverrideItem from '@renderer/components/override/override-item'
 import { FaPlus } from 'react-icons/fa6'
 import { HiOutlineDocumentText } from 'react-icons/hi'
 import { RiArchiveLine } from 'react-icons/ri'
-import { useTranslation } from 'react-i18next'
 
 const Override: React.FC = () => {
   const { t } = useTranslation()

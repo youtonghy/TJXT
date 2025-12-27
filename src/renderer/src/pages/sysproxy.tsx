@@ -5,7 +5,7 @@
 
 // ======================== 导入区 ========================
 // React 核心
-import { Key, useEffect, useState } from 'react'
+import { Key, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
@@ -19,10 +19,8 @@ import PacEditorModal from '@renderer/components/sysproxy/pac-editor-modal'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { platform } from '@renderer/utils/init'
 import { openUWPTool, triggerSysProxy } from '@renderer/utils/ipc'
-import { Key, useState } from 'react'
 import React from 'react'
 import { MdDeleteForever } from 'react-icons/md'
-import { useTranslation } from 'react-i18next'
 
 const defaultPacScript = `
 function FindProxyForURL(url, host) {

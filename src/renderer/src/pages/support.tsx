@@ -13,6 +13,7 @@ import { Button, Card, CardBody, CardHeader, Divider, Input, Modal, ModalBody, M
 
 // 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'

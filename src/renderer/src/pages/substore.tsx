@@ -25,9 +25,7 @@ import {
   stopSubStoreBackendServer,
   downloadSubStore
 } from '@renderer/utils/ipc'
-import React, { useEffect, useState } from 'react'
 import { HiExternalLink } from 'react-icons/hi'
-import { useTranslation } from 'react-i18next'
 import { IoMdCloudDownload } from 'react-icons/io'
 
 const SubStore: React.FC = () => {

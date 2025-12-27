@@ -5,7 +5,7 @@
 
 // ======================== 导入区 ========================
 // React 核心
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
@@ -27,10 +27,8 @@ import {
   startSubStoreBackendServer,
   triggerSysProxy
 } from '@renderer/utils/ipc'
-import React, { useState } from 'react'
 import InterfaceModal from '@renderer/components/mihomo/interface-modal'
 import { MdDeleteForever } from 'react-icons/md'
-import { useTranslation } from 'react-i18next'
 
 const CoreMap = {
   mihomo: 'mihomo.stableVersion',

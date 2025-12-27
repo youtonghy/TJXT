@@ -158,6 +158,17 @@ export interface GiftCardRedeemResult {
   value: number
 }
 
+export interface ServerInfo {
+  id: number
+  name: string
+  type: string
+  host: string
+  port: number
+  group_id: number
+  rate: number
+  tags?: string[]
+}
+
 export interface LoginResponse {
   token: string
   auth_data: string
@@ -673,6 +684,30 @@ export class ApiService {
     )
 
     return this.handleResponse<boolean>(response)
+  }
+
+  // ==================== Server 服务器模块 ====================
+
+  /**
+   * Get server list with rate info
+   * GET user/server/fetch (via V3 Gateway)
+   */
+  async getServers(): Promise<ServerInfo[]> {
+    try {
+      const response = await callV3Gateway(
+        this.baseUrl,
+        'user/server/fetch',
+        'GET',
+        undefined,
+        this.getHeaders(true)
+      )
+
+      return this.handleResponse<ServerInfo[]>(response)
+    } catch (error) {
+      // Return empty array if not logged in or server list not available
+      console.debug('Failed to fetch server list:', error)
+      return []
+    }
   }
 
   // ==================== Guest 访客模块 ====================

@@ -5,7 +5,7 @@
 
 // ======================== 导入区 ========================
 // React 核心
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
@@ -17,9 +17,8 @@ import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 import { restartCore } from '@renderer/utils/ipc'
-import React, { ReactNode, useState } from 'react'
+import React, { ReactNode } from 'react'
 import { MdDeleteForever } from 'react-icons/md'
-import { useTranslation } from 'react-i18next'
 
 const Sniffer: React.FC = () => {
   const { t } = useTranslation()
