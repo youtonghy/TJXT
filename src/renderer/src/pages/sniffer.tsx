@@ -1,4 +1,17 @@
+/**
+ * 页面：域名嗅探设置
+ * Page: Sniffer
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Button, Divider, Input, Switch } from '@heroui/react'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'

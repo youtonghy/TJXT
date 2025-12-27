@@ -1,8 +1,18 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import BasePage from '@renderer/components/base/base-page'
-import { Button, Card, CardBody, CardFooter, CardHeader, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Spinner } from '@heroui/react'
+﻿/**
+ * 页面：商店
+ * Page: Store
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
+
+// UI 组件
+import { Button, Card, CardBody, CardFooter, CardHeader, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Spinner } from '@heroui/react'
+
+// 自定义组件
+import BasePage from '@renderer/components/base/base-page'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'

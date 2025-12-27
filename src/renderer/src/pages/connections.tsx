@@ -1,26 +1,48 @@
-import BasePage from '@renderer/components/base/base-page'
-import { mihomoCloseAllConnections, mihomoCloseConnection } from '@renderer/utils/ipc'
+/**
+ * 页面：连接
+ * Page: Connections
+ */
+
+// ======================== 导入区 ========================
+// React 核心
 import { Key, useEffect, useMemo, useState } from 'react'
-import { Badge, Button, Divider, Input, Select, SelectItem, Tab, Tabs } from '@heroui/react'
-import { calcTraffic } from '@renderer/utils/calc'
-import ConnectionItem from '@renderer/components/connections/connection-item'
-import { Virtuoso } from 'react-virtuoso'
-import dayjs from '@renderer/utils/dayjs'
-import ConnectionDetailModal from '@renderer/components/connections/connection-detail-modal'
-import { CgClose, CgTrash } from 'react-icons/cg'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
-import { HiSortAscending, HiSortDescending } from 'react-icons/hi'
-import { includesIgnoreCase } from '@renderer/utils/includes'
-import { differenceWith, unionWith } from 'lodash'
 import { useTranslation } from 'react-i18next'
 
+// UI 组件
+import { Badge, Button, Divider, Input, Select, SelectItem, Tab, Tabs } from '@heroui/react'
+import { Virtuoso } from 'react-virtuoso'
+
+// 图标
+import { CgClose, CgTrash } from 'react-icons/cg'
+import { HiSortAscending, HiSortDescending } from 'react-icons/hi'
+
+// 自定义组件
+import BasePage from '@renderer/components/base/base-page'
+import ConnectionItem from '@renderer/components/connections/connection-item'
+import ConnectionDetailModal from '@renderer/components/connections/connection-detail-modal'
+
+// Hooks
+import { useAppConfig } from '@renderer/hooks/use-app-config'
+
+// 工具函数
+import { calcTraffic } from '@renderer/utils/calc'
+import dayjs from '@renderer/utils/dayjs'
+import { includesIgnoreCase } from '@renderer/utils/includes'
+import { mihomoCloseAllConnections, mihomoCloseConnection } from '@renderer/utils/ipc'
+import { differenceWith, unionWith } from 'lodash'
+
+// ======================== 全局变量 ========================
 let cachedConnections: IMihomoConnectionDetail[] = []
 
+// ======================== 组件主函数 ========================
 const Connections: React.FC = () => {
+  // -------- Hooks --------
   const { t } = useTranslation()
-  const [filter, setFilter] = useState('')
   const { appConfig, patchAppConfig } = useAppConfig()
   const { connectionDirection = 'asc', connectionOrderBy = 'time' } = appConfig || {}
+
+  // -------- 状态定义 --------
+  const [filter, setFilter] = useState('')
   const [connectionsInfo, setConnectionsInfo] = useState<IMihomoConnectionsInfo>()
   const [allConnections, setAllConnections] = useState<IMihomoConnectionDetail[]>(cachedConnections)
   const [activeConnections, setActiveConnections] = useState<IMihomoConnectionDetail[]>([])
@@ -29,6 +51,8 @@ const Connections: React.FC = () => {
   const [selected, setSelected] = useState<IMihomoConnectionDetail>()
   const [tab, setTab] = useState('active')
 
+  // -------- 计算属性 --------
+  // 筛选和排序连接列表
   const filteredConnections = useMemo(() => {
     const connections = tab === 'active' ? activeConnections : closedConnections
     if (connectionOrderBy) {
@@ -69,14 +93,18 @@ const Connections: React.FC = () => {
     })
   }, [activeConnections, closedConnections, filter, connectionDirection, connectionOrderBy])
 
+  // -------- 事件处理函数 --------
+  // 关闭所有连接
   const closeAllConnections = (): void => {
     tab === 'active' ? mihomoCloseAllConnections() : trashAllClosedConnection()
   }
 
+  // 关闭单个连接
   const closeConnection = (id: string): void => {
     tab === 'active' ? mihomoCloseConnection(id) : trashClosedConnection(id)
   }
 
+  // 清理所有已关闭的连接
   const trashAllClosedConnection = (): void => {
     const trashIds = closedConnections.map((conn) => conn.id)
     setAllConnections((allConns) => allConns.filter((conn) => !trashIds.includes(conn.id)))
@@ -92,6 +120,8 @@ const Connections: React.FC = () => {
     cachedConnections = allConnections
   }
 
+  // -------- 副作用 --------
+  // 监听连接变化
   useEffect(() => {
     window.electron.ipcRenderer.on('mihomoConnections', (_e, info: IMihomoConnectionsInfo) => {
       setConnectionsInfo(info)
@@ -133,6 +163,7 @@ const Connections: React.FC = () => {
     }
   }, [allConnections, activeConnections, closedConnections])
 
+  // ======================== UI 渲染 ========================
   return (
     <BasePage
       title={t('connections.title')}

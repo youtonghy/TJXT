@@ -1,11 +1,26 @@
+/**
+ * 页面：分流规则
+ * Page: Rules
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
+import { Divider, Input } from '@heroui/react'
+import { Virtuoso } from 'react-virtuoso'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
 import RuleItem from '@renderer/components/rules/rule-item'
-import { Virtuoso } from 'react-virtuoso'
-import { useMemo, useState } from 'react'
-import { Divider, Input } from '@heroui/react'
+
+// Hooks
 import { useRules } from '@renderer/hooks/use-rules'
+
+// 工具函数
 import { includesIgnoreCase } from '@renderer/utils/includes'
-import { useTranslation } from 'react-i18next'
 
 const Rules: React.FC = () => {
   const { rules } = useRules()
@@ -24,6 +39,7 @@ const Rules: React.FC = () => {
     })
   }, [rules, filter])
 
+  // ======================== UI 渲染 ========================
   return (
     <BasePage title={t('rules.title')}>
       <div className="sticky top-0 z-40">

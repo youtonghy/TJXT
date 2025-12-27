@@ -1,8 +1,18 @@
+/**
+ * 页面：支持
+ * Page: Support
+ */
+
+// ======================== 导入区 ========================
+// React 核心
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import BasePage from '@renderer/components/base/base-page'
 import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Button, Card, CardBody, CardHeader, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spinner, Textarea, Chip } from '@heroui/react'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
+
+// 自定义组件
+import BasePage from '@renderer/components/base/base-page'
 import { createUserAuthUtils } from '@renderer/utils/user-auth'
 import { getActiveBackend, callV3Gateway } from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'

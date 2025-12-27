@@ -1,3 +1,17 @@
+/**
+ * 页面：配置
+ * Page: Profiles
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
+import useSWR from 'swr'
+
+// UI 组件
 import {
   Button,
   Checkbox,
@@ -9,14 +23,8 @@ import {
   DropdownTrigger,
   Input
 } from '@heroui/react'
-import BasePage from '@renderer/components/base/base-page'
-import ProfileItem from '@renderer/components/profiles/profile-item'
-import { useProfileConfig } from '@renderer/hooks/use-profile-config'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
-import { getFilePath, readTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
-import type { KeyboardEvent } from 'react'
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MdContentPaste } from 'react-icons/md'
+
+// 拖拽排序
 import {
   DndContext,
   closestCenter,
@@ -26,12 +34,23 @@ import {
   DragEndEvent
 } from '@dnd-kit/core'
 import { SortableContext } from '@dnd-kit/sortable'
+
+// 图标
+import { MdContentPaste } from 'react-icons/md'
 import { FaPlus } from 'react-icons/fa6'
 import { IoMdRefresh } from 'react-icons/io'
+
+// 自定义组件
+import BasePage from '@renderer/components/base/base-page'
+import ProfileItem from '@renderer/components/profiles/profile-item'
 import SubStoreIcon from '@renderer/components/base/substore-icon'
-import useSWR from 'swr'
-import { useNavigate } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+
+// Hooks
+import { useProfileConfig } from '@renderer/hooks/use-profile-config'
+import { useAppConfig } from '@renderer/hooks/use-app-config'
+
+// 工具函数
+import { getFilePath, readTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
 
 const Profiles: React.FC = () => {
   const { t } = useTranslation()

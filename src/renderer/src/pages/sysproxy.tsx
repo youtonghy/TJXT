@@ -1,4 +1,17 @@
+/**
+ * 页面：系统代理
+ * Page: System Proxy
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { Key, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Button, Input, Tab, Tabs } from '@heroui/react'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'

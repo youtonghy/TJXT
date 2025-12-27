@@ -1,8 +1,15 @@
+/**
+ * 页面：用户中心
+ * Page: User Center
+ */
+
+// ======================== 导入区 ========================
+// React 核心
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Chip, Tabs, Tab } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
-import { useProfileConfig } from '@renderer/hooks/use-profile-config'
+
+// UI 组件
+import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Chip, Tabs, Tab } from '@heroui/react'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
 import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'

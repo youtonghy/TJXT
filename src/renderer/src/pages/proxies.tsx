@@ -1,30 +1,50 @@
+/**
+ * 页面：代理
+ * Page: Proxies
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Avatar, Button, Card, CardBody, Chip } from '@heroui/react'
+import { GroupedVirtuoso, GroupedVirtuosoHandle } from 'react-virtuoso'
+
+// 图标
+import { CgDetailsLess, CgDetailsMore } from 'react-icons/cg'
+import { TbCircleLetterD } from 'react-icons/tb'
+import { FaLocationCrosshairs } from 'react-icons/fa6'
+import { RxLetterCaseCapitalize } from 'react-icons/rx'
+import { IoIosArrowBack } from 'react-icons/io'
+import { MdDoubleArrow, MdOutlineSpeed } from 'react-icons/md'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+import ProxyItem from '@renderer/components/proxies/proxy-item'
+import CollapseInput from '@renderer/components/base/collapse-input'
+
+// Hooks
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useGroups } from '@renderer/hooks/use-groups'
+import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
+
+// 工具函数
 import {
   getImageDataURL,
   mihomoChangeProxy,
   mihomoCloseAllConnections,
   mihomoProxyDelay
 } from '@renderer/utils/ipc'
-import { CgDetailsLess, CgDetailsMore } from 'react-icons/cg'
-import { TbCircleLetterD } from 'react-icons/tb'
-import { FaLocationCrosshairs } from 'react-icons/fa6'
-import { RxLetterCaseCapitalize } from 'react-icons/rx'
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { GroupedVirtuoso, GroupedVirtuosoHandle } from 'react-virtuoso'
-import ProxyItem from '@renderer/components/proxies/proxy-item'
-import { IoIosArrowBack } from 'react-icons/io'
-import { MdDoubleArrow, MdOutlineSpeed } from 'react-icons/md'
-import { useGroups } from '@renderer/hooks/use-groups'
-import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
-import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import { useTranslation } from 'react-i18next'
+
+// ======================== 常量 ========================
 
 const GROUP_EXPAND_STATE_KEY = 'proxy_group_expand_state'
 
-// 自定义 hook 用于管理展开状态
+// ======================== 自定义 Hook ========================
+// 管理代理组展开状态
 const useProxyState = (groups: IMihomoMixedGroup[]): {
   virtuosoRef: React.RefObject<GroupedVirtuosoHandle>;
   isOpen: boolean[];
@@ -59,7 +79,9 @@ const useProxyState = (groups: IMihomoMixedGroup[]): {
   }
 }
 
+// ======================== 组件主函数 ========================
 const Proxies: React.FC = () => {
+  // -------- Hooks --------
   const { t } = useTranslation()
   const { controledMihomoConfig } = useControledMihomoConfig()
   const { mode = 'rule' } = controledMihomoConfig || {}
@@ -73,11 +95,15 @@ const Proxies: React.FC = () => {
     delayTestConcurrency = 50
   } = appConfig || {}
   
+  // -------- 状态定义 --------
   const [cols, setCols] = useState(1)
   const { virtuosoRef, isOpen, setIsOpen } = useProxyState(groups)
   const [delaying, setDelaying] = useState(Array(groups.length).fill(false))
   const [proxyDelaying, setProxyDelaying] = useState<Record<string, boolean>>({})
   const [searchValue, setSearchValue] = useState(Array(groups.length).fill(''))
+
+  // -------- 计算属性 --------
+  // 计算代理组数量和过滤代理列表
   const { groupCounts, allProxies } = useMemo(() => {
     const groupCounts: number[] = []
     const allProxies: (IMihomoProxy | IMihomoGroup)[][] = []
@@ -110,6 +136,8 @@ const Proxies: React.FC = () => {
     return { groupCounts, allProxies }
   }, [groups, isOpen, proxyDisplayOrder, cols, searchValue])
 
+  // -------- 事件处理函数 --------
+  // 切换代理
   const onChangeProxy = useCallback(async (group: string, proxy: string): Promise<void> => {
     await mihomoChangeProxy(group, proxy)
     if (autoCloseConnection) {

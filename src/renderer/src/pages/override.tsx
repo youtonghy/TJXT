@@ -1,3 +1,14 @@
+/**
+ * 页面：覆写
+ * Page: Override
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import {
   Button,
   Divider,

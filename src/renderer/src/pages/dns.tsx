@@ -1,13 +1,30 @@
-import { Button, Tab, Input, Switch, Tabs, Divider } from '@heroui/react'
-import BasePage from '@renderer/components/base/base-page'
-import { MdDeleteForever } from 'react-icons/md'
-import SettingCard from '@renderer/components/base/base-setting-card'
-import SettingItem from '@renderer/components/base/base-setting-item'
-import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import { useAppConfig } from '@renderer/hooks/use-app-config'
-import { restartCore } from '@renderer/utils/ipc'
+/**
+ * 页面：DNS
+ * Page: DNS
+ */
+
+// ======================== 导入区 ========================
+// React 核心
 import React, { Key, ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+// UI 组件
+import { Button, Tab, Input, Switch, Tabs, Divider } from '@heroui/react'
+
+// 图标
+import { MdDeleteForever } from 'react-icons/md'
+
+// 自定义组件
+import BasePage from '@renderer/components/base/base-page'
+import SettingCard from '@renderer/components/base/base-setting-card'
+import SettingItem from '@renderer/components/base/base-setting-item'
+
+// Hooks
+import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
+import { useAppConfig } from '@renderer/hooks/use-app-config'
+
+// 工具函数
+import { restartCore } from '@renderer/utils/ipc'
 
 const DNS: React.FC = () => {
   const { t } = useTranslation()
@@ -59,11 +76,14 @@ const DNS: React.FC = () => {
     hosts: Object.entries(hosts || {}).map(([domain, value]) => ({ domain, value }))
   })
 
+  // -------- 工具函数 --------
+  // 更新配置值
   const setValues = (v: typeof values): void => {
     originSetValues(v)
     setChanged(true)
   }
 
+  // 处理列表类型配置项的变化
   const handleListChange = (type: string, value: string, index: number): void => {
     const list = [...values[type]]
     if (value.trim()) {
@@ -78,6 +98,7 @@ const DNS: React.FC = () => {
     setValues({ ...values, [type]: list })
   }
 
+  // 渲染列表输入框
   const renderListInputs = (type: string, placeholder: string): ReactNode => {
     const currentItems = values[type]
     const showNewLine = currentItems.every((item: string) => item.trim() !== '')
@@ -106,6 +127,7 @@ const DNS: React.FC = () => {
     ))
   }
 
+  // 处理子键配置项的变化
   const handleSubkeyChange = (type: string, domain: string, value: string, index: number): void => {
     const list = [...values[type]]
     const processedValue = value.includes(',')
@@ -116,6 +138,8 @@ const DNS: React.FC = () => {
     setValues({ ...values, [type]: list })
   }
 
+  // -------- 事件处理函数 --------
+  // 保存DNS配置
   const onSave = async (patch: Partial<IMihomoConfig>): Promise<void> => {
     await patchAppConfig({
       nameserverPolicy: Object.fromEntries(
@@ -132,6 +156,7 @@ const DNS: React.FC = () => {
     }
   }
 
+  // ======================== UI 渲染 ========================
   return (
     <BasePage
       title={t('dns.title')}

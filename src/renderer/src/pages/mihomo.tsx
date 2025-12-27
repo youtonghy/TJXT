@@ -1,4 +1,17 @@
+/**
+ * 页面：内核设置
+ * Page: Mihomo
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Button, Divider, Input, Select, SelectItem, Switch } from '@heroui/react'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'

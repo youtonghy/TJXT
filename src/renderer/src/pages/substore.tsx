@@ -1,5 +1,20 @@
+/**
+ * 页面：Sub-Store
+ * Page: Sub-Store
+ */
+
+// ======================== 导入区 ========================
+// React 核心
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// UI 组件
 import { Button } from '@heroui/react'
+
+// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+
+// Hooks
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import {
   subStoreFrontendPort,
