@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
-import SettingCard from '../base/base-setting-card'
-import SettingItem from '../base/base-setting-item'
-import { Button, Input, Select, SelectItem } from '@heroui/react'
-import { listWebdavBackups, webdavBackup } from '@renderer/utils/ipc'
-import WebdavRestoreModal from './webdav-restore-modal'
+import { toast } from '@renderer/components/base/toast'
+import { Button, Input, Select, SelectItem, Switch } from '@heroui/react'
+import { listWebdavBackups, webdavBackup, reinitWebdavBackupScheduler } from '@renderer/utils/ipc'
 import debounce from '@renderer/utils/debounce'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useTranslation } from 'react-i18next'
+import { isValidCron } from 'cron-validator'
+import SettingItem from '../base/base-setting-item'
+import SettingCard from '../base/base-setting-card'
+import WebdavRestoreModal from './webdav-restore-modal'
 
 const WebdavConfig: React.FC = () => {
   const { t } = useTranslation()
@@ -15,8 +17,10 @@ const WebdavConfig: React.FC = () => {
     webdavUrl,
     webdavUsername,
     webdavPassword,
-    webdavDir = 'mihomo-party',
-    webdavMaxBackups = 0
+    webdavDir = 'clash-party',
+    webdavMaxBackups = 0,
+    webdavBackupCron,
+    webdavIgnoreCert = false
   } = appConfig || {}
   const [backuping, setBackuping] = useState(false)
   const [restoring, setRestoring] = useState(false)
@@ -28,11 +32,27 @@ const WebdavConfig: React.FC = () => {
     webdavUsername,
     webdavPassword,
     webdavDir,
-    webdavMaxBackups
+    webdavMaxBackups,
+    webdavBackupCron,
+    webdavIgnoreCert
   })
   const setWebdavDebounce = debounce(
-    ({ webdavUrl, webdavUsername, webdavPassword, webdavDir, webdavMaxBackups }) => {
-      patchAppConfig({ webdavUrl, webdavUsername, webdavPassword, webdavDir, webdavMaxBackups })
+    ({
+      webdavUrl,
+      webdavUsername,
+      webdavPassword,
+      webdavDir,
+      webdavMaxBackups,
+      webdavBackupCron
+    }) => {
+      patchAppConfig({
+        webdavUrl,
+        webdavUsername,
+        webdavPassword,
+        webdavDir,
+        webdavMaxBackups,
+        webdavBackupCron
+      })
     },
     500
   )
@@ -44,7 +64,7 @@ const WebdavConfig: React.FC = () => {
         body: t('webdav.notification.backupSuccess.body')
       })
     } catch (e) {
-      alert(e)
+      toast.error(String(e))
     } finally {
       setBackuping(false)
     }
@@ -57,7 +77,7 @@ const WebdavConfig: React.FC = () => {
       setFilenames(filenames)
       setRestoreOpen(true)
     } catch (e) {
-      alert(t('common.error.getBackupListFailed', { error: e }))
+      toast.error(t('common.error.getBackupListFailed', { error: e }))
     } finally {
       setRestoring(false)
     }
@@ -135,7 +155,52 @@ const WebdavConfig: React.FC = () => {
             <SelectItem key="20">20</SelectItem>
           </Select>
         </SettingItem>
-        <div className="flex justify0between">
+        <SettingItem title={t('webdav.ignoreCert')} divider>
+          <Switch
+            size="sm"
+            isSelected={webdav.webdavIgnoreCert}
+            onValueChange={(v) => {
+              setWebdav({ ...webdav, webdavIgnoreCert: v })
+              patchAppConfig({ webdavIgnoreCert: v })
+            }}
+          />
+        </SettingItem>
+        <SettingItem title={t('webdav.backup.cron.title')} divider>
+          <div className="flex w-[60%] gap-2">
+            {webdavBackupCron !== webdav.webdavBackupCron && (
+              <Button
+                size="sm"
+                color="primary"
+                onPress={async () => {
+                  if (!webdav.webdavBackupCron || isValidCron(webdav.webdavBackupCron)) {
+                    try {
+                      await patchAppConfig({ webdavBackupCron: webdav.webdavBackupCron })
+                      // 立即重新初始化调度器
+                      await reinitWebdavBackupScheduler()
+                      new Notification(t('webdav.notification.cronUpdated'))
+                    } catch (error) {
+                      console.error('Failed to update cron schedule:', error)
+                      new Notification(t('webdav.notification.cronUpdateFailed'))
+                    }
+                  } else {
+                    toast.warning(t('common.error.invalidCron'))
+                  }
+                }}
+              >
+                {t('common.confirm')}
+              </Button>
+            )}
+            <Input
+              size="sm"
+              value={webdav.webdavBackupCron}
+              placeholder={t('webdav.backup.cron.placeholder')}
+              onValueChange={(v) => {
+                setWebdav({ ...webdav, webdavBackupCron: v })
+              }}
+            />
+          </div>
+        </SettingItem>
+        <div className="flex justify-between">
           <Button isLoading={backuping} fullWidth size="sm" className="mr-1" onPress={handleBackup}>
             {t('webdav.backup')}
           </Button>

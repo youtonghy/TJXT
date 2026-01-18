@@ -1,4 +1,12 @@
-import React, { createContext, useContext, ReactNode, useMemo, useEffect, useState, useRef } from 'react'
+import React, {
+  createContext,
+  useContext,
+  ReactNode,
+  useMemo,
+  useEffect,
+  useState,
+  useRef
+} from 'react'
 import useSWR from 'swr'
 import {
   getProfileConfig,
@@ -41,7 +49,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     const fetchUserSubscriptionUrl = async () => {
       const userAuthUtils = createUserAuthUtils(appConfig)
       const isLoggedIn = userAuthUtils.isLoggedIn()
-      
+
       if (isLoggedIn) {
         try {
           const url = await userAuthUtils.getUserSubscriptionUrl()
@@ -64,7 +72,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
     const userAuthUtils = createUserAuthUtils(appConfig)
     const isLoggedIn = userAuthUtils.isLoggedIn()
-    
+
     const existingUserSubscription = rawProfileConfig.items.find(
       (item) => item.id === USER_SUBSCRIPTION_ID
     )
@@ -72,11 +80,12 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     const isExistingPlaceholder =
       existingUrl === EMPTY_SUBSCRIPTION_URL || existingUrl === LOADING_SUBSCRIPTION_URL
     const resolvedUrl = isLoggedIn
-      ? (userSubscriptionUrl || (existingUrl && !isExistingPlaceholder ? existingUrl : LOADING_SUBSCRIPTION_URL))
+      ? userSubscriptionUrl ||
+        (existingUrl && !isExistingPlaceholder ? existingUrl : LOADING_SUBSCRIPTION_URL)
       : EMPTY_SUBSCRIPTION_URL
-    const existingInterval = existingUserSubscription?.interval ?? 0
+    const existingInterval = Number(existingUserSubscription?.interval ?? 0)
     const resolvedInterval = isLoggedIn ? (existingInterval > 0 ? existingInterval : 60) : 0
-    
+
     // Always create user subscription item, but with different URLs based on login state
     const userSubscriptionItem: IProfileItem = {
       id: USER_SUBSCRIPTION_ID,
@@ -94,16 +103,18 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     }
 
     // Check if user subscription already exists
-    const hasUserSubscription = rawProfileConfig.items.some(item => item.id === USER_SUBSCRIPTION_ID)
-    
+    const hasUserSubscription = rawProfileConfig.items.some(
+      (item) => item.id === USER_SUBSCRIPTION_ID
+    )
+
     let items = [...rawProfileConfig.items]
-    
+
     if (!hasUserSubscription) {
       // Add user subscription at the beginning of the list
       items.unshift(userSubscriptionItem)
     } else {
       // Update existing user subscription with current URL and settings
-      const index = items.findIndex(item => item.id === USER_SUBSCRIPTION_ID)
+      const index = items.findIndex((item) => item.id === USER_SUBSCRIPTION_ID)
       if (index !== -1) {
         items[index] = { ...items[index], ...userSubscriptionItem, updated: Date.now() }
       }
@@ -162,7 +173,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
       alert('用户订阅不能被删除')
       return
     }
-    
+
     try {
       await remove(id)
     } catch (e) {
@@ -198,7 +209,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   const refreshUserSubscription = async (): Promise<void> => {
     const userAuthUtils = createUserAuthUtils(appConfig)
     const isLoggedIn = userAuthUtils.isLoggedIn()
-    
+
     if (isLoggedIn) {
       try {
         const url = await userAuthUtils.getUserSubscriptionUrl()

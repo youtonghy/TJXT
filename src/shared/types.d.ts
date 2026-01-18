@@ -215,6 +215,7 @@ interface ISysProxyConfig {
   pacScript?: string
 }
 
+// TJXT User Center Backend type
 interface IUserCenterBackend {
   id: string
   name: string
@@ -227,24 +228,37 @@ interface IUserCenterBackend {
 }
 
 interface IAppConfig {
-  core: 'mihomo' | 'mihomo-alpha'
-  disableLoopbackDetector: boolean
-  disableEmbedCA: boolean
-  disableSystemCA: boolean
-  skipSafePathCheck: boolean
+  core: 'mihomo' | 'mihomo-alpha' | 'mihomo-smart' | 'mihomo-specific'
+  specificVersion?: string
+  enableSmartCore: boolean
+  enableSmartOverride: boolean
+  smartCoreUseLightGBM: boolean
+  smartCoreCollectData: boolean
+  smartCoreStrategy: 'sticky-sessions' | 'round-robin'
+  smartCollectorSize?: number
   proxyDisplayMode: 'simple' | 'full'
   proxyDisplayOrder: 'default' | 'delay' | 'name'
   profileDisplayDate?: 'expire' | 'update'
   envType?: ('bash' | 'cmd' | 'powershell')[]
   proxyCols: 'auto' | '1' | '2' | '3' | '4'
+  hideUnavailableProxies?: boolean
   connectionDirection: 'asc' | 'desc'
   connectionOrderBy: 'time' | 'upload' | 'download' | 'uploadSpeed' | 'downloadSpeed'
+  connectionViewMode?: 'list' | 'table'
+  connectionTableColumns?: string[]
+  connectionTableColumnWidths?: Record<string, number>
+  connectionTableSortColumn?: string
+  connectionTableSortDirection?: 'asc' | 'desc'
   spinFloatingIcon?: boolean
   disableTray?: boolean
+  swapTrayClick?: boolean
   showFloatingWindow?: boolean
+  floatingWindowCompatMode?: boolean
+  disableHardwareAcceleration?: boolean
   connectionCardStatus?: CardStatus
   dnsCardStatus?: CardStatus
   logCardStatus?: CardStatus
+  hideConnectionCardWave?: boolean
   pauseSSID?: string[]
   mihomoCoreCardStatus?: CardStatus
   overrideCardStatus?: CardStatus
@@ -256,9 +270,12 @@ interface IAppConfig {
   substoreCardStatus?: CardStatus
   sysproxyCardStatus?: CardStatus
   tunCardStatus?: CardStatus
+  // TJXT-specific card status
   userCenterCardStatus?: CardStatus
   supportCardStatus?: CardStatus
   storeCardStatus?: CardStatus
+  // TJXT User Center backends
+  userCenterBackends?: IUserCenterBackend[]
   githubToken?: string
   useSubStore: boolean
   subStoreHost?: string
@@ -276,6 +293,7 @@ interface IAppConfig {
   originDNS?: string
   useWindowFrame: boolean
   proxyInTray: boolean
+  showCurrentProxyInTray: boolean
   siderOrder: string[]
   siderWidth: number
   appTheme: AppTheme
@@ -289,16 +307,22 @@ interface IAppConfig {
   delayTestConcurrency?: number
   delayTestUrl?: string
   delayTestTimeout?: number
+  subscriptionTimeout?: number
   encryptedPassword?: number[]
   controlDns?: boolean
   controlSniff?: boolean
   useDockIcon?: boolean
   showTraffic?: boolean
+  disableTrayIconColor?: boolean
+  trayProxyGroupStyle?: 'default' | 'submenu'
+  disableAnimations?: boolean
   webdavUrl?: string
   webdavDir?: string
   webdavUsername?: string
   webdavPassword?: string
   webdavMaxBackups?: number
+  webdavBackupCron?: string
+  webdavIgnoreCert?: boolean
   useNameserverPolicy: boolean
   nameserverPolicy: { [key: string]: string | string[] }
   showWindowShortcut?: string
@@ -310,8 +334,19 @@ interface IAppConfig {
   directModeShortcut?: string
   restartAppShortcut?: string
   quitWithoutCoreShortcut?: string
-  language?: 'zh-CN' | 'en-US' | 'ru-RU' | 'fa-IR'
-  userCenterBackends?: IUserCenterBackend[]
+  language?: 'zh-CN' | 'zh-TW' | 'en-US' | 'ru-RU' | 'fa-IR'
+  triggerMainWindowBehavior?: 'show' | 'toggle'
+  showMixedPort?: number
+  enableMixedPort?: boolean
+  showSocksPort?: number
+  enableSocksPort?: boolean
+  showHttpPort?: number
+  enableHttpPort?: boolean
+  showRedirPort?: number
+  enableRedirPort?: boolean
+  showTproxyPort?: number
+  enableTproxyPort?: boolean
+  testProfileOnStart?: boolean
 }
 
 interface IMihomoTunConfig {
@@ -470,7 +505,7 @@ interface IProfileItem {
   name: string
   url?: string // remote
   file?: string // local
-  interval?: number
+  interval?: number | string
   home?: string
   updated?: number
   override?: string[]
@@ -478,6 +513,8 @@ interface IProfileItem {
   extra?: ISubscriptionUserInfo
   substore?: boolean
   allowFixedInterval?: boolean
+  autoUpdate?: boolean
+  authToken?: string
 }
 
 interface ISubStoreSub {

@@ -1,7 +1,7 @@
-import { is } from '@electron-toolkit/utils'
 import { existsSync, mkdirSync } from 'fs'
-import { app } from 'electron'
 import path from 'path'
+import { is } from '@electron-toolkit/utils'
+import { app } from 'electron'
 
 export const homeDir = app.getPath('home')
 
@@ -23,7 +23,7 @@ export function taskDir(): string {
   if (!existsSync(userDataDir)) {
     mkdirSync(userDataDir, { recursive: true })
   }
-  
+
   const dir = path.join(userDataDir, 'tasks')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
@@ -69,6 +69,10 @@ export function mihomoCoreDir(): string {
 
 export function mihomoCorePath(core: string): string {
   const isWin = process.platform === 'win32'
+  // 处理 Smart 内核
+  if (core === 'mihomo-smart') {
+    return path.join(mihomoCoreDir(), `mihomo-smart${isWin ? '.exe' : ''}`)
+  }
   return path.join(mihomoCoreDir(), `${core}${isWin ? '.exe' : ''}`)
 }
 
@@ -130,12 +134,35 @@ export function logDir(): string {
 
 export function logPath(): string {
   const date = new Date()
-  const name = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const name = `clash-party-${year}-${month}-${day}`
   return path.join(logDir(), `${name}.log`)
 }
 
 export function substoreLogPath(): string {
   const date = new Date()
-  const name = `sub-store-${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const name = `sub-store-${year}-${month}-${day}`
   return path.join(logDir(), `${name}.log`)
+}
+
+export function coreLogPath(): string {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const name = `core-${year}-${month}-${day}`
+  return path.join(logDir(), `${name}.log`)
+}
+
+export function rulesDir(): string {
+  return path.join(dataDir(), 'rules')
+}
+
+export function rulePath(id: string): string {
+  return path.join(rulesDir(), `${id}.yaml`)
 }

@@ -19,7 +19,7 @@ extraResources:
   - from: './extra/'
     to: ''
 protocols:
-  name: 'Mihomo Party URI Scheme'
+  name: 'TJXT URI Scheme'
   schemes:
     - 'clash'
     - 'mihomo'
@@ -40,32 +40,48 @@ mac:
   target:
     - pkg
   entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: true
+  notarize: false
   artifactName: ${name}-macos-${version}-${arch}.${ext}
 pkg:
   allowAnywhere: false
   allowCurrentUserHome: false
+  isRelocatable: false
   background:
     alignment: bottomleft
     file: build/background.png
 linux:
+  executableName: TJXT
+  icon: build/icon.png
   desktop:
-    Name: TJXT
-    MimeType: 'x-scheme-handler/clash;x-scheme-handler/mihomo'
+    entry:
+      Name: TJXT
+      GenericName: Proxy Client
+      Comment: A GUI client based on Mihomo
+      MimeType: 'x-scheme-handler/clash;x-scheme-handler/mihomo'
+      Keywords: proxy;clash;mihomo;vpn;
+      StartupWMClass: TJXT
+      Icon: TJXT
   target:
     - deb
     - rpm
-  maintainer: mihomo-party-org
+  maintainer: Tokisantike Network
   category: Utility
   artifactName: ${name}-linux-${version}-${arch}.${ext}
 deb:
   afterInstall: 'build/linux/postinst'
+  afterRemove: 'build/linux/postuninst'
 rpm:
   afterInstall: 'build/linux/postinst'
-npmRebuild: false
+  afterRemove: 'build/linux/postuninst'
+  fpm:
+    - '--rpm-rpmbuild-define'
+    - '_build_id_links none'
+npmRebuild: true
 publish: []

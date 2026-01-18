@@ -1,25 +1,15 @@
-/**
- * 页面：TUN
- * Page: TUN
- */
-
-// ======================== 导入区 ========================
-// React 核心
-import { Key, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-
-// UI 组件
 import { Button, Input, Switch, Tab, Tabs } from '@heroui/react'
-
-// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+import { showErrorSync } from '@renderer/utils/error-display'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
-import { manualGrantCorePermition, restartCore, setupFirewall } from '@renderer/utils/ipc'
+import { grantTunPermissions, restartCore, setupFirewall } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
+import React, { Key, useState } from 'react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { MdDeleteForever } from 'react-icons/md'
+import { useTranslation } from 'react-i18next'
 
 const Tun: React.FC = () => {
   const { t } = useTranslation()
@@ -29,7 +19,7 @@ const Tun: React.FC = () => {
   const { tun } = controledMihomoConfig || {}
   const [loading, setLoading] = useState(false)
   const {
-    device = 'Mihomo',
+    device = platform === 'darwin' ? 'utun1500' : 'Mihomo',
     stack = 'mixed',
     'auto-route': autoRoute = true,
     'auto-redirect': autoRedirect = false,
@@ -123,7 +113,7 @@ const Tun: React.FC = () => {
                     new Notification(t('tun.notifications.firewallResetSuccess'))
                     await restartCore()
                   } catch (e) {
-                    alert(e)
+                    showErrorSync(e, t('common.error.firewallSetupFailed'))
                   } finally {
                     setLoading(false)
                   }
@@ -140,11 +130,11 @@ const Tun: React.FC = () => {
                 color="primary"
                 onPress={async () => {
                   try {
-                    await manualGrantCorePermition()
+                    await grantTunPermissions()
                     new Notification(t('tun.notifications.coreAuthSuccess'))
                     await restartCore()
                   } catch (e) {
-                    alert(e)
+                    showErrorSync(e, t('common.error.coreAuthFailed'))
                   }
                 }}
               >
@@ -176,18 +166,17 @@ const Tun: React.FC = () => {
               <Tab key="system" title="System" />
             </Tabs>
           </SettingItem>
-          {platform !== 'darwin' && (
-            <SettingItem title={t('tun.device.title')} divider>
-              <Input
-                size="sm"
-                className="w-[100px]"
-                value={values.device}
-                onValueChange={(v) => {
-                  setValues({ ...values, device: v })
-                }}
-              />
-            </SettingItem>
-          )}
+          <SettingItem title={t('tun.device.title')} divider>
+            <Input
+              size="sm"
+              className="w-[100px]"
+              value={values.device}
+              placeholder={platform === 'darwin' ? 'utun1500' : 'Mihomo'}
+              onValueChange={(v) => {
+                setValues({ ...values, device: v })
+              }}
+            />
+          </SettingItem>
 
           <SettingItem title={t('tun.strictRoute')} divider>
             <Switch
@@ -234,7 +223,8 @@ const Tun: React.FC = () => {
               className="w-[100px]"
               value={values.mtu.toString()}
               onValueChange={(v) => {
-                setValues({ ...values, mtu: parseInt(v) })
+                const num = parseInt(v)
+                setValues({ ...values, mtu: isNaN(num) ? 1500 : num })
               }}
             />
           </SettingItem>

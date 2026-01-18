@@ -1,6 +1,5 @@
 import { Button, Tooltip } from '@heroui/react'
-import SettingCard from '../base/base-setting-card'
-import SettingItem from '../base/base-setting-item'
+import { toast } from '@renderer/components/base/toast'
 import {
   checkUpdate,
   createHeapSnapshot,
@@ -9,11 +8,13 @@ import {
   resetAppConfig
 } from '@renderer/utils/ipc'
 import { useState } from 'react'
-import UpdaterModal from '../updater/updater-modal'
 import { version } from '@renderer/utils/init'
 import { IoIosHelpCircle } from 'react-icons/io'
 import { getDriver } from '@renderer/App'
 import { useTranslation } from 'react-i18next'
+import UpdaterModal from '../updater/updater-modal'
+import SettingItem from '../base/base-setting-item'
+import SettingCard from '../base/base-setting-card'
 import BaseConfirmModal from '../base/base-confirm-modal'
 
 const Actions: React.FC = () => {
@@ -64,12 +65,12 @@ const Actions: React.FC = () => {
                   setChangelog(version.changelog)
                   setOpenUpdate(true)
                 } else {
-                  new window.Notification(t('actions.update.upToDate.title'), { 
-                    body: t('actions.update.upToDate.body') 
+                  new window.Notification(t('actions.update.upToDate.title'), {
+                    body: t('actions.update.upToDate.body')
                   })
                 }
               } catch (e) {
-                alert(e)
+                toast.error(String(e))
               } finally {
                 setCheckingUpdate(false)
               }

@@ -1,26 +1,15 @@
-/**
- * 页面：系统代理
- * Page: System Proxy
- */
-
-// ======================== 导入区 ========================
-// React 核心
-import { Key, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-
-// UI 组件
 import { Button, Input, Tab, Tabs } from '@heroui/react'
-
-// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+import { showErrorSync } from '@renderer/utils/error-display'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'
 import PacEditorModal from '@renderer/components/sysproxy/pac-editor-modal'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { platform } from '@renderer/utils/init'
 import { openUWPTool, triggerSysProxy } from '@renderer/utils/ipc'
-import React from 'react'
+import React, { Key, useState } from 'react'
 import { MdDeleteForever } from 'react-icons/md'
+import { useTranslation } from 'react-i18next'
 
 const defaultPacScript = `
 function FindProxyForURL(url, host) {
@@ -116,7 +105,7 @@ const Sysproxy: React.FC = () => {
     } catch (e) {
       setValues({ ...values, enable: previousState })
       setChanged(true)
-      alert(e)
+      showErrorSync(e, t('common.error.sysproxySetupFailed'))
 
       await patchAppConfig({ sysProxy: { enable: false } })
     }

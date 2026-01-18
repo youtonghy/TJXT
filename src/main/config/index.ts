@@ -10,12 +10,12 @@ export {
   setProfileConfig,
   addProfileItem,
   removeProfileItem,
-  removeProfileFile,
   createProfile,
   getProfileStr,
   setProfileStr,
   changeCurrentProfile,
-  updateProfileItem
+  updateProfileItem,
+  convertMrsRuleset
 } from './profile'
 export {
   getOverrideConfig,
@@ -28,3 +28,9 @@ export {
   setOverride,
   updateOverrideItem
 } from './override'
+export {
+  createSmartOverride,
+  removeSmartOverride,
+  manageSmartOverride,
+  isSmartOverrideExists
+} from './smartOverride'

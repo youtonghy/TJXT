@@ -9,9 +9,32 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
-import { Card, CardBody, CardHeader, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, Divider, Spinner, Progress, Chip, Tabs, Tab } from '@heroui/react'
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Input,
+  Button,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  Divider,
+  Spinner,
+  Progress,
+  Chip,
+  Tabs,
+  Tab
+} from '@heroui/react'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
-import { IoCloseOutline, IoPersonOutline, IoServerOutline, IoSpeedometer, IoPaperPlaneOutline, IoLogInOutline } from 'react-icons/io5'
+import {
+  IoCloseOutline,
+  IoPersonOutline,
+  IoServerOutline,
+  IoSpeedometer,
+  IoPaperPlaneOutline,
+  IoLogInOutline
+} from 'react-icons/io5'
 import BasePage from '@renderer/components/base/base-page'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
@@ -79,11 +102,14 @@ const UserCenter: React.FC = () => {
       return import.meta.env.DEV
     }
   }, [])
-  const logDebug = useCallback((...args: unknown[]) => {
-    if (debugEnabled) {
-      console.info('[UserCenter]', ...args)
-    }
-  }, [debugEnabled])
+  const logDebug = useCallback(
+    (...args: unknown[]) => {
+      if (debugEnabled) {
+        console.info('[UserCenter]', ...args)
+      }
+    },
+    [debugEnabled]
+  )
   const maskToken = useCallback((token?: string | null) => {
     if (!token) return null
     const trimmed = token.trim()
@@ -115,13 +141,17 @@ const UserCenter: React.FC = () => {
       if (message.startsWith('http ')) return false
       if (message.includes('服务器响应异常')) return false
       if (message.includes('timeout') || message.includes('timed out')) return true
-      if (message.includes('failed to fetch') || message.includes('network') || message.includes('fetch')) {
+      if (
+        message.includes('failed to fetch') ||
+        message.includes('network') ||
+        message.includes('fetch')
+      ) {
         return true
       }
     }
     return false
   }, [])
-  
+
   // Backend management
   const [backends, setBackends] = useState<IUserCenterBackend[]>([])
   const [selectedBackend, setSelectedBackend] = useState<IUserCenterBackend | null>(null)
@@ -166,37 +196,39 @@ const UserCenter: React.FC = () => {
 
   // Telegram Login State
   const [telegramToken, setTelegramToken] = useState<string | null>(null)
-  const [telegramStatus, setTelegramStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'expired'>('idle')
+  const [telegramStatus, setTelegramStatus] = useState<
+    'idle' | 'pending' | 'approved' | 'rejected' | 'expired'
+  >('idle')
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   // 加载状态
   const [loading, setLoading] = useState<LoadingState>({
     userInfo: false,
     announcements: false
   })
-  
+
   // 错误状态
   const [errors, setErrors] = useState<ErrorState>({
     userInfo: null,
     announcements: null
   })
-  
+
   // 模态框状态
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  
+
   // 自动刷新相关
   const [, setLastUpdate] = useState<Date | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const backendsRef = useRef<IUserCenterBackend[]>([])
   const hasStartedAutoTest = useRef<boolean>(false)
-  
+
   // 网络状态 - 默认假设在线，通过实际 API 请求结果来判断
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
     isOnline: true,
     lastConnected: new Date()
   })
-  
+
   // 服务器测试状态
   const [, setServerTestStatus] = useState<{
     isLoading: boolean
@@ -207,7 +239,7 @@ const UserCenter: React.FC = () => {
     lastPing: null,
     lastTest: null
   })
-  
+
   const normalizeTokenType = (value?: string | null): string | null => {
     if (!value) return null
     const trimmed = value.trim()
@@ -232,7 +264,9 @@ const UserCenter: React.FC = () => {
 
     const data = payload as Record<string, unknown>
     const tokenType =
-      normalizeTokenType((data.token_type as string | undefined) || (data.tokenType as string | undefined)) || undefined
+      normalizeTokenType(
+        (data.token_type as string | undefined) || (data.tokenType as string | undefined)
+      ) || undefined
 
     if (data.auth_data && typeof data.auth_data === 'object') {
       const nested = normalizeAuthPayload(data.auth_data)
@@ -261,15 +295,15 @@ const UserCenter: React.FC = () => {
     setToken: (token: string, expiresInDays: number = 7, tokenType?: string | null) => {
       const normalizedType = normalizeTokenType(tokenType)
       const now = new Date()
-      const expiresAt = now.getTime() + (expiresInDays * 24 * 60 * 60 * 1000)
-      
+      const expiresAt = now.getTime() + expiresInDays * 24 * 60 * 60 * 1000
+
       const tokenData = {
         token,
         expiresAt,
         createdAt: now.getTime(),
         ...(normalizedType ? { tokenType: normalizedType } : {})
       }
-      
+
       localStorage.setItem('userToken', token)
       localStorage.setItem('userTokenData', JSON.stringify(tokenData))
       logDebug('token stored', {
@@ -278,26 +312,26 @@ const UserCenter: React.FC = () => {
         expiresAt
       })
     },
-    
+
     // 获取Token
     getToken: (): string | null => {
       const token = localStorage.getItem('userToken')
       const tokenDataStr = localStorage.getItem('userTokenData')
-      
+
       if (!token || !tokenDataStr) {
         return null
       }
-      
+
       try {
         const tokenData = JSON.parse(tokenDataStr)
         const now = Date.now()
-        
+
         // 检查是否过期
         if (tokenData.expiresAt && now > tokenData.expiresAt) {
           tokenManager.clearToken()
           return null
         }
-        
+
         return token
       } catch {
         // 数据格式错误，清除token
@@ -326,43 +360,43 @@ const UserCenter: React.FC = () => {
       logDebug('auth header prepared', { token: maskToken(token), header: maskToken(headerValue) })
       return headerValue
     },
-    
+
     // 清除Token
     clearToken: () => {
       localStorage.removeItem('userToken')
       localStorage.removeItem('userTokenData')
       localStorage.removeItem('userEmail') // 清除记住的邮箱
     },
-    
+
     // 检查Token是否即将过期（24小时内）
     isTokenExpiringSoon: (): boolean => {
       const tokenDataStr = localStorage.getItem('userTokenData')
       if (!tokenDataStr) return false
-      
+
       try {
         const tokenData = JSON.parse(tokenDataStr)
         const now = Date.now()
         const oneDay = 24 * 60 * 60 * 1000
-        
-        return tokenData.expiresAt && (tokenData.expiresAt - now) < oneDay
+
+        return tokenData.expiresAt && tokenData.expiresAt - now < oneDay
       } catch {
         return false
       }
     },
-    
+
     // 获取Token剩余天数
     getTokenRemainingDays: (): number => {
       const tokenDataStr = localStorage.getItem('userTokenData')
       if (!tokenDataStr) return 0
-      
+
       try {
         const tokenData = JSON.parse(tokenDataStr)
         const now = Date.now()
-        
+
         if (!tokenData.expiresAt || now > tokenData.expiresAt) {
           return 0
         }
-        
+
         return Math.ceil((tokenData.expiresAt - now) / (24 * 60 * 60 * 1000))
       } catch {
         return 0
@@ -389,232 +423,246 @@ const UserCenter: React.FC = () => {
     return webLoginStateRef.current || localStorage.getItem(WEB_LOGIN_STATE_KEY)
   }, [])
 
-  const scheduleWebLoginTimeout = useCallback((expiresInSeconds?: number) => {
-    if (!expiresInSeconds || expiresInSeconds <= 0) return
-    if (webLoginTimeoutRef.current) {
-      clearTimeout(webLoginTimeoutRef.current)
-      webLoginTimeoutRef.current = null
-    }
-    webLoginTimeoutRef.current = setTimeout(() => {
-      setWebLoginStatus('idle')
-      clearWebLoginState()
-      setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginExpired') }))
-    }, expiresInSeconds * 1000)
-  }, [clearWebLoginState, t])
+  const scheduleWebLoginTimeout = useCallback(
+    (expiresInSeconds?: number) => {
+      if (!expiresInSeconds || expiresInSeconds <= 0) return
+      if (webLoginTimeoutRef.current) {
+        clearTimeout(webLoginTimeoutRef.current)
+        webLoginTimeoutRef.current = null
+      }
+      webLoginTimeoutRef.current = setTimeout(() => {
+        setWebLoginStatus('idle')
+        clearWebLoginState()
+        setErrors((prev) => ({ ...prev, userInfo: t('userCenter.webLoginExpired') }))
+      }, expiresInSeconds * 1000)
+    },
+    [clearWebLoginState, t]
+  )
 
   // 通用API请求函数（使用 V3 网关）
-  const apiRequest = useCallback(async (endpoint: string, options: { method?: 'GET' | 'POST'; params?: Record<string, unknown> } = {}) => {
-    const authHeader = tokenManager.getAuthHeaderValue()
-    if (!authHeader) {
-      logDebug('apiRequest aborted (missing auth)', { endpoint, method: options.method || 'GET' })
-      setIsLoggedIn(false)
-      return null
-    }
-
-    // 移除开头的斜杠
-    const cleanEndpoint = endpoint.replace(/^\/+/, '')
-    const baseUrl = getNormalizedBaseUrl()
-
-    try {
-      logDebug('apiRequest start', {
-        endpoint: cleanEndpoint,
-        method: options.method || 'GET',
-        baseUrl
-      })
-      const response = await callV3Gateway(
-        baseUrl,
-        cleanEndpoint,
-        options.method || 'GET',
-        options.params,
-        {
-          'Authorization': authHeader,
-          'User-Agent': API_USER_AGENT
-        }
-      )
-      logDebug('apiRequest response', {
-        endpoint: cleanEndpoint,
-        status: response.status,
-        ok: response.ok
-      })
-
-      if (response.status === 401) {
-        // Token无效或过期，清除并重新登录
-        tokenManager.clearToken()
+  const apiRequest = useCallback(
+    async (
+      endpoint: string,
+      options: { method?: 'GET' | 'POST'; params?: Record<string, unknown> } = {}
+    ) => {
+      const authHeader = tokenManager.getAuthHeaderValue()
+      if (!authHeader) {
+        logDebug('apiRequest aborted (missing auth)', { endpoint, method: options.method || 'GET' })
         setIsLoggedIn(false)
         return null
       }
 
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`
-        try {
-          const text = await response.text()
-          const obj = JSON.parse(text)
-          const keys = ['message', 'msg', 'error', 'detail', 'info']
-          for (const k of keys) {
-            const v = (obj as Record<string, unknown>)[k]
-            if (typeof v === 'string' && v.trim()) {
-              errorMessage = v.trim()
-              break
-            }
+      // 移除开头的斜杠
+      const cleanEndpoint = endpoint.replace(/^\/+/, '')
+      const baseUrl = getNormalizedBaseUrl()
+
+      try {
+        logDebug('apiRequest start', {
+          endpoint: cleanEndpoint,
+          method: options.method || 'GET',
+          baseUrl
+        })
+        const response = await callV3Gateway(
+          baseUrl,
+          cleanEndpoint,
+          options.method || 'GET',
+          options.params,
+          {
+            Authorization: authHeader,
+            'User-Agent': API_USER_AGENT
           }
-        } catch {
-          // ignore parse errors
+        )
+        logDebug('apiRequest response', {
+          endpoint: cleanEndpoint,
+          status: response.status,
+          ok: response.ok
+        })
+
+        if (response.status === 401) {
+          // Token无效或过期，清除并重新登录
+          tokenManager.clearToken()
+          setIsLoggedIn(false)
+          return null
         }
-        throw new Error(errorMessage)
+
+        if (!response.ok) {
+          let errorMessage = `HTTP ${response.status}`
+          try {
+            const text = await response.text()
+            const obj = JSON.parse(text)
+            const keys = ['message', 'msg', 'error', 'detail', 'info']
+            for (const k of keys) {
+              const v = (obj as Record<string, unknown>)[k]
+              if (typeof v === 'string' && v.trim()) {
+                errorMessage = v.trim()
+                break
+              }
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(errorMessage)
+        }
+
+        const data = await response.json()
+
+        // API请求成功，更新网络状态
+        setNetworkStatus({
+          isOnline: true,
+          lastConnected: new Date()
+        })
+
+        return data.data || data
+      } catch (error) {
+        // 仅在网络错误时设置离线状态
+        if (shouldMarkOffline(error)) {
+          setNetworkStatus((prev) => ({ ...prev, isOnline: false }))
+        }
+
+        console.error(`API request failed for ${endpoint}:`, error)
+        logDebug('apiRequest failed', { endpoint: cleanEndpoint, error })
+        throw error
       }
-
-      const data = await response.json()
-
-      // API请求成功，更新网络状态
-      setNetworkStatus({
-        isOnline: true,
-        lastConnected: new Date()
-      })
-
-      return data.data || data
-    } catch (error) {
-      // 仅在网络错误时设置离线状态
-      if (shouldMarkOffline(error)) {
-        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
-      }
-
-      console.error(`API request failed for ${endpoint}:`, error)
-      logDebug('apiRequest failed', { endpoint: cleanEndpoint, error })
-      throw error
-    }
-  }, [activeBackend, getNormalizedBaseUrl, logDebug, shouldMarkOffline])
+    },
+    [activeBackend, getNormalizedBaseUrl, logDebug, shouldMarkOffline]
+  )
 
   // 获取用户信息
-  const fetchUserInfo = useCallback(async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(prev => ({ ...prev, userInfo: true }))
-      setErrors(prev => ({ ...prev, userInfo: null }))
-    }
-
-    try {
-      // 使用 getSubscribe 接口获取详细流量信息
-      const data = await apiRequest('/user/getSubscribe')
-      
-      if (data) {
-        const newUserInfo: UserInfo = {
-          email: data.email || 'user@example.com',
-          traffic: {
-            upload: Number(data.u) || 0,
-            download: Number(data.d) || 0,
-            total: Number(data.transfer_enable) || 0,
-            expire: data.expired_at ? data.expired_at * 1000 : null
-          }
-        }
-        setUserInfo(newUserInfo)
-        setIsLoggedIn(true)
-        setLastUpdate(new Date())
+  const fetchUserInfo = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setLoading((prev) => ({ ...prev, userInfo: true }))
+        setErrors((prev) => ({ ...prev, userInfo: null }))
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '获取用户信息失败'
-      setErrors(prev => ({ ...prev, userInfo: errorMessage }))
-      
-      // API失败时，仅在初次加载时使用模拟数据
-      console.warn('用户信息加载失败，使用模拟数据:', error)
-    } finally {
-      setLoading(prev => ({ ...prev, userInfo: false }))
-    }
-  }, [apiRequest]) // 移除userInfo依赖，避免无限循环
+
+      try {
+        // 使用 getSubscribe 接口获取详细流量信息
+        const data = await apiRequest('/user/getSubscribe')
+
+        if (data) {
+          const newUserInfo: UserInfo = {
+            email: data.email || 'user@example.com',
+            traffic: {
+              upload: Number(data.u) || 0,
+              download: Number(data.d) || 0,
+              total: Number(data.transfer_enable) || 0,
+              expire: data.expired_at ? data.expired_at * 1000 : null
+            }
+          }
+          setUserInfo(newUserInfo)
+          setIsLoggedIn(true)
+          setLastUpdate(new Date())
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '获取用户信息失败'
+        setErrors((prev) => ({ ...prev, userInfo: errorMessage }))
+
+        // API失败时，仅在初次加载时使用模拟数据
+        console.warn('用户信息加载失败，使用模拟数据:', error)
+      } finally {
+        setLoading((prev) => ({ ...prev, userInfo: false }))
+      }
+    },
+    [apiRequest]
+  ) // 移除userInfo依赖，避免无限循环
 
   // 获取公告
-  const fetchAnnouncements = useCallback(async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(prev => ({ ...prev, announcements: true }))
-      setErrors(prev => ({ ...prev, announcements: null }))
-    }
-
-    try {
-      const data = await apiRequest('/user/notice/fetch')
-      
-      // 处理不同的响应格式
-      let notices: any[] = []
-      if (Array.isArray(data)) {
-        notices = data
-      } else if (data && Array.isArray(data.data)) {
-        notices = data.data
-      } else if (data && data.data && Array.isArray(data.data.list)) {
-        notices = data.data.list
+  const fetchAnnouncements = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setLoading((prev) => ({ ...prev, announcements: true }))
+        setErrors((prev) => ({ ...prev, announcements: null }))
       }
-      
-      if (notices && notices.length > 0) {
-        const filteredAnnouncements: Announcement[] = notices
-          .filter((notice: any) => String(notice?.show ?? '1') === '1')
-          .map((notice: any) => {
-            const createdAtMs = notice?.created_at
-              ? Number(notice.created_at) * 1000
-              : notice?.createdAt
-              ? Number(notice.createdAt) * 1000
-              : notice?.updated_at
-              ? Number(notice.updated_at) * 1000
-              : Date.now()
-            const tags = Array.isArray(notice?.tags) ? notice.tags.map((tag: any) => String(tag)) : []
-            const imgUrl = notice?.img_url || notice?.image_url || notice?.image || ''
 
-            return {
-              id: String(notice.id || Math.random().toString(36).slice(2)),
-              title: notice.title || '公告',
-              content: notice.content || '',
-              date: new Date(createdAtMs).toLocaleString('zh-CN'),
-              imgUrl,
-              tags,
-              createdAt: createdAtMs,
-              updatedAt: notice?.updated_at ? Number(notice.updated_at) * 1000 : undefined,
-              show: notice.show
-            }
-          })
-          .sort((a, b) => {
-            const dateA = a.createdAt || 0
-            const dateB = b.createdAt || 0
-            return dateB - dateA
-          })
-        setAnnouncements(filteredAnnouncements)
-      } else {
-        setAnnouncements([])
+      try {
+        const data = await apiRequest('/user/notice/fetch')
+
+        // 处理不同的响应格式
+        let notices: any[] = []
+        if (Array.isArray(data)) {
+          notices = data
+        } else if (data && Array.isArray(data.data)) {
+          notices = data.data
+        } else if (data && data.data && Array.isArray(data.data.list)) {
+          notices = data.data.list
+        }
+
+        if (notices && notices.length > 0) {
+          const filteredAnnouncements: Announcement[] = notices
+            .filter((notice: any) => String(notice?.show ?? '1') === '1')
+            .map((notice: any) => {
+              const createdAtMs = notice?.created_at
+                ? Number(notice.created_at) * 1000
+                : notice?.createdAt
+                  ? Number(notice.createdAt) * 1000
+                  : notice?.updated_at
+                    ? Number(notice.updated_at) * 1000
+                    : Date.now()
+              const tags = Array.isArray(notice?.tags)
+                ? notice.tags.map((tag: any) => String(tag))
+                : []
+              const imgUrl = notice?.img_url || notice?.image_url || notice?.image || ''
+
+              return {
+                id: String(notice.id || Math.random().toString(36).slice(2)),
+                title: notice.title || '公告',
+                content: notice.content || '',
+                date: new Date(createdAtMs).toLocaleString('zh-CN'),
+                imgUrl,
+                tags,
+                createdAt: createdAtMs,
+                updatedAt: notice?.updated_at ? Number(notice.updated_at) * 1000 : undefined,
+                show: notice.show
+              }
+            })
+            .sort((a, b) => {
+              const dateA = a.createdAt || 0
+              const dateB = b.createdAt || 0
+              return dateB - dateA
+            })
+          setAnnouncements(filteredAnnouncements)
+        } else {
+          setAnnouncements([])
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '获取公告失败'
+        setErrors((prev) => ({ ...prev, announcements: errorMessage }))
+
+        // API失败时，仅在初次加载时使用模拟数据
+        console.warn('公告加载失败，使用模拟数据:', error)
+      } finally {
+        setLoading((prev) => ({ ...prev, announcements: false }))
       }
-  } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '获取公告失败'
-      setErrors(prev => ({ ...prev, announcements: errorMessage }))
-      
-      // API失败时，仅在初次加载时使用模拟数据
-      console.warn('公告加载失败，使用模拟数据:', error)
-    } finally {
-      setLoading(prev => ({ ...prev, announcements: false }))
-    }
-  }, [apiRequest])
+    },
+    [apiRequest]
+  )
 
-  const markAnnouncementAsRead = useCallback((id: string) => {
-    if (!id) return
-    setReadAnnouncementIds(prev => {
-      if (prev.has(id)) return prev
-      const updated = new Set(prev)
-      updated.add(id)
-      localStorage.setItem(READ_ANNOUNCEMENTS_KEY, JSON.stringify(Array.from(updated)))
-      return updated
-    })
-  }, [READ_ANNOUNCEMENTS_KEY])
+  const markAnnouncementAsRead = useCallback(
+    (id: string) => {
+      if (!id) return
+      setReadAnnouncementIds((prev) => {
+        if (prev.has(id)) return prev
+        const updated = new Set(prev)
+        updated.add(id)
+        localStorage.setItem(READ_ANNOUNCEMENTS_KEY, JSON.stringify(Array.from(updated)))
+        return updated
+      })
+    },
+    [READ_ANNOUNCEMENTS_KEY]
+  )
 
   // 服务器连接测试（使用 V3 网关）
   const testServerConnection = useCallback(async () => {
-    setServerTestStatus(prev => ({ ...prev, isLoading: true }))
+    setServerTestStatus((prev) => ({ ...prev, isLoading: true }))
 
     const baseUrl = getNormalizedBaseUrl()
     logDebug('testServerConnection start', { baseUrl })
 
     try {
       const startTime = Date.now()
-      const response = await callV3Gateway(
-        baseUrl,
-        'guest/comm/config',
-        'GET',
-        undefined,
-        {
-          'User-Agent': API_USER_AGENT
-        }
-      )
+      const response = await callV3Gateway(baseUrl, 'guest/comm/config', 'GET', undefined, {
+        'User-Agent': API_USER_AGENT
+      })
       const endTime = Date.now()
       const ping = endTime - startTime
 
@@ -643,12 +691,12 @@ const UserCenter: React.FC = () => {
           isOnline: true,
           lastConnected: new Date()
         })
-        setErrors(prev => ({ ...prev, userInfo: null }))
+        setErrors((prev) => ({ ...prev, userInfo: null }))
       } else {
         throw new Error(`服务器响应异常 (${response.status})`)
       }
     } catch (error) {
-      setServerTestStatus(prev => ({
+      setServerTestStatus((prev) => ({
         ...prev,
         isLoading: false,
         lastTest: new Date()
@@ -666,12 +714,12 @@ const UserCenter: React.FC = () => {
         }
       }
 
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
         userInfo: `服务器测试失败: ${errorMsg}`
       }))
       if (shouldMarkOffline(error)) {
-        setNetworkStatus(prev => ({ ...prev, isOnline: false }))
+        setNetworkStatus((prev) => ({ ...prev, isOnline: false }))
       }
     }
   }, [getNormalizedBaseUrl, logDebug, shouldMarkOffline])
@@ -685,7 +733,7 @@ const UserCenter: React.FC = () => {
       backendsRef.current = availableBackends // 更新 ref
       // Restore previously selected backend from storage if exists
       const savedId = localStorage.getItem(SELECTED_BACKEND_KEY)
-      const saved = availableBackends.find(b => b.id === savedId)
+      const saved = availableBackends.find((b) => b.id === savedId)
       if (saved) {
         setSelectedBackend(saved)
         setUserSelectedBackendId(saved.id)
@@ -708,8 +756,8 @@ const UserCenter: React.FC = () => {
       setBackendTestResults(results)
 
       // 直接使用测速结果更新本地 backends 状态
-      const updatedBackends = currentBackends.map(backend => {
-        const testResult = results.find(result => result.id === backend.id)
+      const updatedBackends = currentBackends.map((backend) => {
+        const testResult = results.find((result) => result.id === backend.id)
         if (testResult) {
           return {
             ...backend,
@@ -746,8 +794,8 @@ const UserCenter: React.FC = () => {
       setBackendTestResults(results)
 
       // 直接使用测速结果更新本地 backends 状态
-      const updatedBackends = currentBackends.map(backend => {
-        const testResult = results.find(result => result.id === backend.id)
+      const updatedBackends = currentBackends.map((backend) => {
+        const testResult = results.find((result) => result.id === backend.id)
         if (testResult) {
           return {
             ...backend,
@@ -771,7 +819,9 @@ const UserCenter: React.FC = () => {
         setSelectedBackend(optimalBackend)
         setUserSelectedBackendId(optimalBackend.id)
         localStorage.setItem(SELECTED_BACKEND_KEY, optimalBackend.id)
-        console.log(`Selected optimal backend: ${optimalBackend.name} (${optimalBackend.lastPing}ms)`)
+        console.log(
+          `Selected optimal backend: ${optimalBackend.name} (${optimalBackend.lastPing}ms)`
+        )
       }
 
       return results
@@ -783,64 +833,61 @@ const UserCenter: React.FC = () => {
     }
   }, [patchAppConfig, appConfig, selectedBackend])
 
-  const handleBackendSelection = useCallback(async (backendId: string) => {
-    try {
-      // Treat as session selection only; do not change default
-      const picked = backendsRef.current.find(b => b.id === backendId) || null
-      if (picked) {
-        setSelectedBackend(picked)
-        setUserSelectedBackendId(backendId)
-        localStorage.setItem(SELECTED_BACKEND_KEY, backendId)
+  const handleBackendSelection = useCallback(
+    async (backendId: string) => {
+      try {
+        // Treat as session selection only; do not change default
+        const picked = backendsRef.current.find((b) => b.id === backendId) || null
+        if (picked) {
+          setSelectedBackend(picked)
+          setUserSelectedBackendId(backendId)
+          localStorage.setItem(SELECTED_BACKEND_KEY, backendId)
+        }
+      } catch (error) {
+        console.error('Failed to select backend:', error)
       }
-    } catch (error) {
-      console.error('Failed to select backend:', error)
-    }
-  }, [patchAppConfig, appConfig])
+    },
+    [patchAppConfig, appConfig]
+  )
 
-  const completeLogin = useCallback(async (authPayload: AuthPayload | string) => {
-    const normalized = normalizeAuthPayload(authPayload)
-    if (!normalized) {
-      logDebug('completeLogin failed to normalize payload', { payload: authPayload })
-      throw new Error('返回数据格式错误')
-    }
-    logDebug('completeLogin start', {
-      token: maskToken(normalized.token),
-      tokenType: normalized.tokenType || null
-    })
-    tokenManager.setToken(normalized.token, 7, normalized.tokenType)
-    setIsLoggedIn(true)
-    setErrors(prev => ({ ...prev, userInfo: null }))
-    setTelegramToken(null)
-    setTelegramStatus('idle')
-    resetWebLogin()
+  const completeLogin = useCallback(
+    async (authPayload: AuthPayload | string) => {
+      const normalized = normalizeAuthPayload(authPayload)
+      if (!normalized) {
+        logDebug('completeLogin failed to normalize payload', { payload: authPayload })
+        throw new Error('返回数据格式错误')
+      }
+      logDebug('completeLogin start', {
+        token: maskToken(normalized.token),
+        tokenType: normalized.tokenType || null
+      })
+      tokenManager.setToken(normalized.token, 7, normalized.tokenType)
+      setIsLoggedIn(true)
+      setErrors((prev) => ({ ...prev, userInfo: null }))
+      setTelegramToken(null)
+      setTelegramStatus('idle')
+      resetWebLogin()
 
-    setNetworkStatus({
-      isOnline: true,
-      lastConnected: new Date()
-    })
+      setNetworkStatus({
+        isOnline: true,
+        lastConnected: new Date()
+      })
 
-    try {
-      await Promise.all([
-        fetchUserInfo(),
-        fetchAnnouncements(),
-        refreshUserSubscription()
-      ])
-      logDebug('completeLogin refresh done')
-    } catch (e) {
-      console.warn('Initial data load failed:', e)
-    }
-  }, [
-    fetchAnnouncements,
-    fetchUserInfo,
-    refreshUserSubscription,
-    resetWebLogin
-  ])
+      try {
+        await Promise.all([fetchUserInfo(), fetchAnnouncements(), refreshUserSubscription()])
+        logDebug('completeLogin refresh done')
+      } catch (e) {
+        console.warn('Initial data load failed:', e)
+      }
+    },
+    [fetchAnnouncements, fetchUserInfo, refreshUserSubscription, resetWebLogin]
+  )
 
   const handleWebLogin = async () => {
     const baseUrl = getNormalizedBaseUrl()
 
     if (!baseUrl) {
-      setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
+      setErrors((prev) => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
       return
     }
 
@@ -850,13 +897,14 @@ const UserCenter: React.FC = () => {
     })
     resetWebLogin()
     setWebLoginStatus('starting')
-    setLoading(prev => ({ ...prev, userInfo: true }))
-    setErrors(prev => ({ ...prev, userInfo: null }))
+    setLoading((prev) => ({ ...prev, userInfo: true }))
+    setErrors((prev) => ({ ...prev, userInfo: null }))
 
     try {
-      const state = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2)
+      const state =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2)
       webLoginStateRef.current = state
       localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
       logDebug('webLogin state generated', { state })
@@ -865,7 +913,7 @@ const UserCenter: React.FC = () => {
       const response = await fetch(`${baseUrl}/api/v3/passport/auth/thirdPartyLogin/init`, {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Content-Type': 'application/json',
           'User-Agent': API_USER_AGENT
         },
@@ -885,7 +933,9 @@ const UserCenter: React.FC = () => {
         if (response.status === 404) {
           throw new Error(t('userCenter.webLoginNotSupported'))
         }
-        throw new Error(response.ok ? t('userCenter.webLoginInitFailed') : `HTTP ${response.status}`)
+        throw new Error(
+          response.ok ? t('userCenter.webLoginInitFailed') : `HTTP ${response.status}`
+        )
       }
 
       let data: any = null
@@ -901,9 +951,10 @@ const UserCenter: React.FC = () => {
       })
 
       if (!response.ok) {
-        const fallback = response.status === 404
-          ? t('userCenter.webLoginNotSupported')
-          : t('userCenter.webLoginInitFailed')
+        const fallback =
+          response.status === 404
+            ? t('userCenter.webLoginNotSupported')
+            : t('userCenter.webLoginInitFailed')
         throw new Error(data?.message || fallback)
       }
 
@@ -919,30 +970,31 @@ const UserCenter: React.FC = () => {
     } catch (error) {
       logDebug('webLogin init failed', error)
       resetWebLogin()
-      const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginInitFailed')
-      setErrors(prev => ({ ...prev, userInfo: errorMessage }))
+      const errorMessage =
+        error instanceof Error ? error.message : t('userCenter.webLoginInitFailed')
+      setErrors((prev) => ({ ...prev, userInfo: errorMessage }))
     } finally {
-      setLoading(prev => ({ ...prev, userInfo: false }))
+      setLoading((prev) => ({ ...prev, userInfo: false }))
     }
   }
 
   // 登录处理（使用 V3 网关）
   const handleTelegramLogin = async () => {
     if (!email.trim()) {
-      setErrors(prev => ({ ...prev, userInfo: '请输入邮箱地址' }))
+      setErrors((prev) => ({ ...prev, userInfo: '请输入邮箱地址' }))
       return
     }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
-      setErrors(prev => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
+      setErrors((prev) => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
       return
     }
 
     resetWebLogin()
-    setLoading(prev => ({ ...prev, userInfo: true }))
-    setErrors(prev => ({ ...prev, userInfo: null }))
+    setLoading((prev) => ({ ...prev, userInfo: true }))
+    setErrors((prev) => ({ ...prev, userInfo: null }))
     setTelegramStatus('idle')
 
     const baseUrl = getNormalizedBaseUrl()
@@ -973,9 +1025,9 @@ const UserCenter: React.FC = () => {
         throw new Error('未获取到登录凭证')
       }
     } catch (error: any) {
-       setErrors(prev => ({ ...prev, userInfo: error.message || '发起登录失败' }))
+      setErrors((prev) => ({ ...prev, userInfo: error.message || '发起登录失败' }))
     } finally {
-      setLoading(prev => ({ ...prev, userInfo: false }))
+      setLoading((prev) => ({ ...prev, userInfo: false }))
     }
   }
 
@@ -991,103 +1043,110 @@ const UserCenter: React.FC = () => {
   // Poll Status（使用 V3 网关）
   useEffect(() => {
     if (!telegramToken || telegramStatus !== 'pending') {
-        if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current)
-            pollingIntervalRef.current = null
-        }
-        return
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      return
     }
 
     const baseUrl = getNormalizedBaseUrl()
 
     const checkStatus = async () => {
-        try {
-            const response = await callV3Gateway(
-              baseUrl,
-              'passport/auth/checkTelegramLogin',
-              'GET',
-              { token: telegramToken },
-              {
-                'User-Agent': API_USER_AGENT
-              }
-            )
-            const data = await response.json()
+      try {
+        const response = await callV3Gateway(
+          baseUrl,
+          'passport/auth/checkTelegramLogin',
+          'GET',
+          { token: telegramToken },
+          {
+            'User-Agent': API_USER_AGENT
+          }
+        )
+        const data = await response.json()
 
-            if (response.ok && data.data) {
-                const { status, verify_code } = data.data
+        if (response.ok && data.data) {
+          const { status, verify_code } = data.data
 
-                if (status === 'approved' && verify_code) {
-                    setTelegramStatus('approved')
-                    // Authenticate with verify code
-                    await performTokenLogin(verify_code)
-                } else if (status === 'rejected' || status === 'expired') {
-                    setTelegramStatus(status)
-                    setErrors(prev => ({ ...prev, userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期' }))
-                    setTelegramToken(null)
-                }
-            }
-        } catch (error) {
-            console.error('Polling error:', error)
+          if (status === 'approved' && verify_code) {
+            setTelegramStatus('approved')
+            // Authenticate with verify code
+            await performTokenLogin(verify_code)
+          } else if (status === 'rejected' || status === 'expired') {
+            setTelegramStatus(status)
+            setErrors((prev) => ({
+              ...prev,
+              userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期'
+            }))
+            setTelegramToken(null)
+          }
         }
+      } catch (error) {
+        console.error('Polling error:', error)
+      }
     }
 
     pollingIntervalRef.current = setInterval(checkStatus, 2000) // Poll every 2 seconds
 
     return () => {
-        if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current)
-        }
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
     }
   }, [telegramToken, telegramStatus, activeBackend])
 
   // Token Login (Final Step)（使用 V3 网关）
   const performTokenLogin = async (verifyCode: string) => {
-      setLoading(prev => ({ ...prev, userInfo: true }))
+    setLoading((prev) => ({ ...prev, userInfo: true }))
     const baseUrl = getNormalizedBaseUrl()
 
-      try {
-        logDebug('telegram token2Login start', { baseUrl, verify: maskToken(verifyCode) })
-        const response = await callV3Gateway(
-          baseUrl,
-          'passport/auth/token2Login',
-          'GET',
-          { verify: verifyCode },
-          {
-            'User-Agent': API_USER_AGENT
-          }
-        )
-
-        logDebug('telegram token2Login response', { status: response.status, ok: response.ok })
-        if (!response.ok) {
-           throw new Error('验证登录失败')
+    try {
+      logDebug('telegram token2Login start', { baseUrl, verify: maskToken(verifyCode) })
+      const response = await callV3Gateway(
+        baseUrl,
+        'passport/auth/token2Login',
+        'GET',
+        { verify: verifyCode },
+        {
+          'User-Agent': API_USER_AGENT
         }
+      )
 
-        const data = await response.json()
-        logDebug('telegram token2Login payload', {
-          keys: data ? Object.keys(data) : null
-        })
-
-        const authPayload = normalizeAuthPayload(data?.data ?? data)
-        if (authPayload) {
-             await completeLogin(authPayload)
-        } else {
-            throw new Error('返回数据格式错误')
-        }
-
-      } catch (error: any) {
-          setErrors(prev => ({ ...prev, userInfo: error.message || '登录验证失败' }))
-          setTelegramStatus('idle')
-          setTelegramToken(null)
-      } finally {
-          setLoading(prev => ({ ...prev, userInfo: false }))
+      logDebug('telegram token2Login response', { status: response.status, ok: response.ok })
+      if (!response.ok) {
+        throw new Error('验证登录失败')
       }
+
+      const data = await response.json()
+      logDebug('telegram token2Login payload', {
+        keys: data ? Object.keys(data) : null
+      })
+
+      const authPayload = normalizeAuthPayload(data?.data ?? data)
+      if (authPayload) {
+        await completeLogin(authPayload)
+      } else {
+        throw new Error('返回数据格式错误')
+      }
+    } catch (error: any) {
+      setErrors((prev) => ({ ...prev, userInfo: error.message || '登录验证失败' }))
+      setTelegramStatus('idle')
+      setTelegramToken(null)
+    } finally {
+      setLoading((prev) => ({ ...prev, userInfo: false }))
+    }
   }
 
   useEffect(() => {
     const handleUserCenterLogin = async (
-      _event: unknown,
-      payload?: { accessToken?: string | null; tokenType?: string | null; error?: string | null; state?: string | null }
-    ) => {
+      _event: Electron.IpcRendererEvent,
+      payload?: {
+        accessToken?: string | null
+        tokenType?: string | null
+        error?: string | null
+        state?: string | null
+      }
+    ): Promise<void> => {
       if (!payload) return
       logDebug('deeplink received', {
         accessToken: maskToken(payload.accessToken),
@@ -1098,38 +1157,42 @@ const UserCenter: React.FC = () => {
       const expectedState = getWebLoginState()
       if (payload.state && expectedState && payload.state !== expectedState) {
         logDebug('deeplink state mismatch', { expected: expectedState, actual: payload.state })
-        setErrors(prev => ({ ...prev, userInfo: t('userCenter.webLoginStateMismatch') }))
+        setErrors((prev) => ({ ...prev, userInfo: t('userCenter.webLoginStateMismatch') }))
         resetWebLogin()
         return
       }
 
       if (payload.error) {
-        const message = payload.error === 'access_denied'
-          ? t('userCenter.webLoginDenied')
-          : t('userCenter.webLoginFailed')
+        const message =
+          payload.error === 'access_denied'
+            ? t('userCenter.webLoginDenied')
+            : t('userCenter.webLoginFailed')
         logDebug('deeplink error', { error: payload.error })
-        setErrors(prev => ({ ...prev, userInfo: message }))
+        setErrors((prev) => ({ ...prev, userInfo: message }))
         resetWebLogin()
         return
       }
 
       if (payload.accessToken) {
-        setLoading(prev => ({ ...prev, userInfo: true }))
+        setLoading((prev) => ({ ...prev, userInfo: true }))
         try {
           logDebug('deeplink login start')
           await completeLogin({ token: payload.accessToken, tokenType: payload.tokenType })
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : t('userCenter.webLoginFailed')
-          setErrors(prev => ({ ...prev, userInfo: errorMessage }))
+          const errorMessage =
+            error instanceof Error ? error.message : t('userCenter.webLoginFailed')
+          setErrors((prev) => ({ ...prev, userInfo: errorMessage }))
         } finally {
-          setLoading(prev => ({ ...prev, userInfo: false }))
+          setLoading((prev) => ({ ...prev, userInfo: false }))
         }
       }
     }
 
-    window.electron.ipcRenderer.on('userCenterLogin', handleUserCenterLogin)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    window.electron.ipcRenderer.on('userCenterLogin', handleUserCenterLogin as any)
     return () => {
-      window.electron.ipcRenderer.removeListener('userCenterLogin', handleUserCenterLogin)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      window.electron.ipcRenderer.removeListener('userCenterLogin', handleUserCenterLogin as any)
     }
   }, [completeLogin, getWebLoginState, resetWebLogin, t])
 
@@ -1151,50 +1214,57 @@ const UserCenter: React.FC = () => {
     setTelegramToken(null)
     setTelegramStatus('idle')
     if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-        pollingIntervalRef.current = null
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
     }
-    
+
     // 重置自动测试标志
     hasStartedAutoTest.current = false
-    
+
     // 清理定时器
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
-    
+
     // 清理错误状态
     setErrors({
       userInfo: null,
       announcements: null
     })
-    
+
     // 刷新用户订阅为空白状态，并更新订阅内容为默认空白配置
-    refreshUserSubscription().then(async () => {
-      try {
-        // 获取用户订阅项ID
-        const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
-
-        // 关键修复：将订阅项在配置中改为“空白占位”URL并禁用自动更新，避免重启后被重新拉取
-        // 说明：主进程 profileUpdater 在 URL 为 'https://example.com/empty-subscription' 或 interval 为 0 时都不会触发更新
+    refreshUserSubscription()
+      .then(async () => {
         try {
-          const currentItem = await window.electron.ipcRenderer.invoke('getProfileItem', USER_SUBSCRIPTION_ID)
-          if (currentItem) {
-            const patchedItem = {
-              ...currentItem,
-              url: 'https://example.com/empty-subscription',
-              interval: 0,
-              extra: undefined
-            }
-            await window.electron.ipcRenderer.invoke('updateProfileItem', patchedItem)
-          }
-        } catch (e) {
-          console.warn('更新用户订阅占位状态失败（将继续清理本地文件）:', e)
-        }
+          // 获取用户订阅项ID
+          const USER_SUBSCRIPTION_ID = 'user-subscription-meta'
 
-        // 同步将本地配置文件重置为空白（即使随后删除文件，也可立即生效为干净配置）
-        await window.electron.ipcRenderer.invoke('setProfileStr', USER_SUBSCRIPTION_ID, `# 空白订阅配置
+          // 关键修复：将订阅项在配置中改为“空白占位”URL并禁用自动更新，避免重启后被重新拉取
+          // 说明：主进程 profileUpdater 在 URL 为 'https://example.com/empty-subscription' 或 interval 为 0 时都不会触发更新
+          try {
+            const currentItem = await window.electron.ipcRenderer.invoke(
+              'getProfileItem',
+              USER_SUBSCRIPTION_ID
+            )
+            if (currentItem) {
+              const patchedItem = {
+                ...currentItem,
+                url: 'https://example.com/empty-subscription',
+                interval: 0,
+                extra: undefined
+              }
+              await window.electron.ipcRenderer.invoke('updateProfileItem', patchedItem)
+            }
+          } catch (e) {
+            console.warn('更新用户订阅占位状态失败（将继续清理本地文件）:', e)
+          }
+
+          // 同步将本地配置文件重置为空白（即使随后删除文件，也可立即生效为干净配置）
+          await window.electron.ipcRenderer.invoke(
+            'setProfileStr',
+            USER_SUBSCRIPTION_ID,
+            `# 空白订阅配置
 # 退出登录后的默认配置，包含基本结构但无具体代理内容
 
 proxies:
@@ -1206,21 +1276,23 @@ proxy-groups:
 rules:
   # 无规则配置
   - MATCH,DIRECT
-`)
-        
-        // 强制删除AppData中的用户订阅文件
-        try {
-          await window.electron.ipcRenderer.invoke('removeProfileFile', USER_SUBSCRIPTION_ID)
-          console.log('AppData中的用户订阅文件已删除')
-        } catch (fileError) {
-          console.warn('删除AppData中的用户订阅文件失败:', fileError)
-        }
+`
+          )
 
-        console.log('用户订阅内容已清空为默认配置')
-      } catch (error) {
-        console.error('清空用户订阅内容失败:', error)
-      }
-    }).catch(console.error)
+          // 强制删除AppData中的用户订阅文件
+          try {
+            await window.electron.ipcRenderer.invoke('removeProfileFile', USER_SUBSCRIPTION_ID)
+            console.log('AppData中的用户订阅文件已删除')
+          } catch (fileError) {
+            console.warn('删除AppData中的用户订阅文件失败:', fileError)
+          }
+
+          console.log('用户订阅内容已清空为默认配置')
+        } catch (error) {
+          console.error('清空用户订阅内容失败:', error)
+        }
+      })
+      .catch(console.error)
   }
 
   useEffect(() => {
@@ -1276,7 +1348,7 @@ rules:
         if (currentBackends.length >= 1) {
           const results = await testAllBackends()
           // 检查是否有任何一个后端可用
-          const hasActiveBackend = results?.some(r => r.isActive) ?? false
+          const hasActiveBackend = results?.some((r) => r.isActive) ?? false
 
           // 只有所有后端都不可用时，才启动定时刷新
           if (!hasActiveBackend) {
@@ -1285,7 +1357,7 @@ rules:
               if (latestBackends.length >= 1) {
                 const retryResults = await testAllBackends()
                 // 如果有后端可用了，停止刷新
-                const nowHasActive = retryResults?.some(r => r.isActive) ?? false
+                const nowHasActive = retryResults?.some((r) => r.isActive) ?? false
                 if (nowHasActive && intervalRef.current) {
                   clearInterval(intervalRef.current)
                   intervalRef.current = null
@@ -1325,9 +1397,9 @@ rules:
       if (tokenManager.isTokenExpiringSoon()) {
         const remainingDays = tokenManager.getTokenRemainingDays()
         if (remainingDays > 0) {
-          setErrors(prev => ({ 
-            ...prev, 
-            userInfo: `登录将在${remainingDays}天后过期，请及时重新登录` 
+          setErrors((prev) => ({
+            ...prev,
+            userInfo: `登录将在${remainingDays}天后过期，请及时重新登录`
           }))
         }
       }
@@ -1335,10 +1407,10 @@ rules:
 
     // 立即检查一次
     checkTokenExpiration()
-    
+
     // 每小时检查一次
     const tokenCheckInterval = setInterval(checkTokenExpiration, 60 * 60 * 1000)
-    
+
     return () => {
       clearInterval(tokenCheckInterval)
     }
@@ -1409,7 +1481,9 @@ rules:
                 <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
                   <IoPersonOutline className="text-primary text-3xl" />
                 </div>
-                <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t('userCenter.login')}</h2>
+                <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
+                  {t('userCenter.login')}
+                </h2>
                 <p className="text-default-500 mt-2">登录以访问您的用户中心</p>
               </div>
             </CardHeader>
@@ -1421,7 +1495,7 @@ rules:
                   <span>网络连接已断开，请检查网络连接</span>
                 </div>
               )}
-              
+
               {/* 登录错误提示 */}
               {errors.userInfo && (
                 <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
@@ -1431,10 +1505,10 @@ rules:
                     </div>
                     <div className="flex-1">
                       <p className="text-danger text-sm font-medium">{errors.userInfo}</p>
-                      <Button 
-                        variant="light" 
-                        size="sm" 
-                        onPress={() => setErrors(prev => ({ ...prev, userInfo: null }))}
+                      <Button
+                        variant="light"
+                        size="sm"
+                        onPress={() => setErrors((prev) => ({ ...prev, userInfo: null }))}
                         className="mt-2 text-danger hover:bg-danger/10"
                       >
                         关闭提示
@@ -1443,7 +1517,7 @@ rules:
                   </div>
                 </div>
               )}
-              
+
               {telegramLoginEnabled && (
                 <Tabs
                   aria-label={t('userCenter.loginMethod')}
@@ -1465,7 +1539,9 @@ rules:
                         <IoLogInOutline />
                       </div>
                       <div className="space-y-1">
-                        <h4 className="font-semibold text-foreground">{t('userCenter.webLoginTitle')}</h4>
+                        <h4 className="font-semibold text-foreground">
+                          {t('userCenter.webLoginTitle')}
+                        </h4>
                         <p className="text-xs text-default-500">{t('userCenter.webLoginHint')}</p>
                       </div>
                     </div>
@@ -1477,8 +1553,12 @@ rules:
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                           <IoLogInOutline />
                         </div>
-                        <h4 className="font-bold text-primary">{t('userCenter.webLoginPendingTitle')}</h4>
-                        <p className="text-xs text-default-500">{t('userCenter.webLoginPendingDesc')}</p>
+                        <h4 className="font-bold text-primary">
+                          {t('userCenter.webLoginPendingTitle')}
+                        </h4>
+                        <p className="text-xs text-default-500">
+                          {t('userCenter.webLoginPendingDesc')}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1492,7 +1572,11 @@ rules:
                       className="w-full h-12 text-base font-extrabold shadow-lg"
                       onPress={handleWebLogin}
                       isLoading={webLoginStatus === 'starting'}
-                      isDisabled={!networkStatus.isOnline || webLoginStatus === 'starting' || telegramStatus === 'pending'}
+                      isDisabled={
+                        !networkStatus.isOnline ||
+                        webLoginStatus === 'starting' ||
+                        telegramStatus === 'pending'
+                      }
                       startContent={webLoginStatus !== 'starting' && <IoLogInOutline />}
                     >
                       {webLoginStatus === 'pending'
@@ -1518,68 +1602,75 @@ rules:
               {loginMode === 'telegram' && (
                 <>
                   <div className="space-y-4">
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="请输入邮箱"
-                  size="lg"
-                  variant="bordered"
-                  radius="lg"
-                  isDisabled={loading.userInfo || !networkStatus.isOnline || telegramStatus === 'pending' || webLoginStatus === 'pending'}
-                  startContent={<IoPersonOutline className="text-default-400" />}
-                  classNames={{
-                    input: "text-base",
-                    inputWrapper: "h-12 shadow-sm"
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleTelegramLogin()
-                    }
-                  }}
-                />
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="请输入邮箱"
+                      size="lg"
+                      variant="bordered"
+                      radius="lg"
+                      isDisabled={
+                        loading.userInfo ||
+                        !networkStatus.isOnline ||
+                        telegramStatus === 'pending' ||
+                        webLoginStatus === 'pending'
+                      }
+                      startContent={<IoPersonOutline className="text-default-400" />}
+                      classNames={{
+                        input: 'text-base',
+                        inputWrapper: 'h-12 shadow-sm'
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleTelegramLogin()
+                        }
+                      }}
+                    />
 
-                {telegramStatus === 'pending' && (
-                    <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg animate-pulse">
+                    {telegramStatus === 'pending' && (
+                      <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg animate-pulse">
                         <div className="flex flex-col items-center gap-2 text-center">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                <IoPaperPlaneOutline />
-                            </div>
-                            <h4 className="font-bold text-primary">请在 Telegram 确认登录</h4>
-                            <p className="text-xs text-default-500">已向您的 Telegram 发送登录请求，请确认...</p>
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <IoPaperPlaneOutline />
+                          </div>
+                          <h4 className="font-bold text-primary">请在 Telegram 确认登录</h4>
+                          <p className="text-xs text-default-500">
+                            已向您的 Telegram 发送登录请求，请确认...
+                          </p>
                         </div>
-                    </div>
-                )}
-              </div>
-              
-              {telegramStatus === 'pending' ? (
-                  <Button
-                    color="danger"
-                    size="lg"
-                    variant="flat"
-                    radius="lg"
-                    className="w-full h-12 text-base font-medium"
-                    onPress={cancelTelegramLogin}
-                  >
-                    取消登录
-                  </Button>
-              ) : (
-                  <Button
-                    color="primary"
-                    size="lg"
-                    variant="solid"
-                    radius="lg"
-                    className="w-full h-12 text-base font-extrabold shadow-lg"
-                    onPress={handleTelegramLogin}
-                    isLoading={loading.userInfo}
-                    isDisabled={!email || !networkStatus.isOnline || webLoginStatus === 'pending'}
-                    startContent={!loading.userInfo && <IoPaperPlaneOutline />}
-                  >
-                    {loading.userInfo ? '请求中...' : 'Telegram 登录'}
-                  </Button>
-              )}
-              
-              {/* 服务器选择和测试（未登录也可选择，会话生效） */}
+                      </div>
+                    )}
+                  </div>
+
+                  {telegramStatus === 'pending' ? (
+                    <Button
+                      color="danger"
+                      size="lg"
+                      variant="flat"
+                      radius="lg"
+                      className="w-full h-12 text-base font-medium"
+                      onPress={cancelTelegramLogin}
+                    >
+                      取消登录
+                    </Button>
+                  ) : (
+                    <Button
+                      color="primary"
+                      size="lg"
+                      variant="solid"
+                      radius="lg"
+                      className="w-full h-12 text-base font-extrabold shadow-lg"
+                      onPress={handleTelegramLogin}
+                      isLoading={loading.userInfo}
+                      isDisabled={!email || !networkStatus.isOnline || webLoginStatus === 'pending'}
+                      startContent={!loading.userInfo && <IoPaperPlaneOutline />}
+                    >
+                      {loading.userInfo ? '请求中...' : 'Telegram 登录'}
+                    </Button>
+                  )}
+
+                  {/* 服务器选择和测试（未登录也可选择，会话生效） */}
                 </>
               )}
 
@@ -1589,7 +1680,9 @@ rules:
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <IoServerOutline className="text-primary text-lg" />
-                        <label className="text-sm font-semibold text-foreground">选择后端服务器</label>
+                        <label className="text-sm font-semibold text-foreground">
+                          选择后端服务器
+                        </label>
                       </div>
                       <Button
                         size="sm"
@@ -1597,28 +1690,34 @@ rules:
                         color="primary"
                         isLoading={isTestingBackends}
                         startContent={!isTestingBackends && <IoSpeedometer className="text-sm" />}
-                        onPress={backends.length > 1 ? testAllBackendsAndSelectOptimal : testAllBackends}
+                        onPress={
+                          backends.length > 1 ? testAllBackendsAndSelectOptimal : testAllBackends
+                        }
                         disabled={isTestingBackends}
                         className="text-xs min-w-fit px-3 shadow-sm"
                       >
-                        {isTestingBackends ? '测试中...' : (backends.length > 1 ? '测试并选择最优' : '测试延迟')}
+                        {isTestingBackends
+                          ? '测试中...'
+                          : backends.length > 1
+                            ? '测试并选择最优'
+                            : '测试延迟'}
                       </Button>
                     </div>
-                    
+
                     {isTestingBackends && (
                       <div className="flex items-center justify-center gap-2 text-primary text-xs">
                         <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
                         <span>正在测试所有后端服务器延迟...</span>
                       </div>
                     )}
-                    
+
                     <div className="space-y-2">
                       {backends.map((backend) => (
                         <div
                           key={backend.id}
                           className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 hover:border-primary hover:shadow-sm ${
-                            selectedBackend?.id === backend.id 
-                              ? 'border-primary bg-primary/5 shadow-sm' 
+                            selectedBackend?.id === backend.id
+                              ? 'border-primary bg-primary/5 shadow-sm'
                               : 'border-default-200 hover:bg-default-100'
                           }`}
                           onClick={() => {
@@ -1633,12 +1732,22 @@ rules:
                                   {backend.name}
                                 </span>
                                 {backend.isDefault && (
-                                  <Chip size="sm" color="primary" variant="solid" className="text-xs">
+                                  <Chip
+                                    size="sm"
+                                    color="primary"
+                                    variant="solid"
+                                    className="text-xs"
+                                  >
                                     默认
                                   </Chip>
                                 )}
                                 {selectedBackend?.id === backend.id && (
-                                  <Chip size="sm" color="secondary" variant="bordered" className="text-xs">
+                                  <Chip
+                                    size="sm"
+                                    color="secondary"
+                                    variant="bordered"
+                                    className="text-xs"
+                                  >
                                     当前选择
                                   </Chip>
                                 )}
@@ -1646,37 +1755,53 @@ rules:
                                   <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
                                 )}
                               </div>
-                              
+
                               <div className="flex items-center gap-3">
                                 {backend.isActive !== undefined && (
-                                  <div className={`flex items-center gap-1 text-xs ${
-                                    backend.isActive ? 'text-success' : 'text-danger'
-                                  }`}>
-                                    <div className={`w-1.5 h-1.5 rounded-full ${
-                                      backend.isActive ? 'bg-success' : 'bg-danger'
-                                    }`}></div>
+                                  <div
+                                    className={`flex items-center gap-1 text-xs ${
+                                      backend.isActive ? 'text-success' : 'text-danger'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        backend.isActive ? 'bg-success' : 'bg-danger'
+                                      }`}
+                                    ></div>
                                     {backend.isActive ? '在线' : '离线'}
                                   </div>
                                 )}
                                 {backend.lastPing && (
-                                  <div className={`flex items-center gap-1 text-xs ${
-                                    backend.lastPing < 300 ? 'text-success' : 
-                                    backend.lastPing < 1000 ? 'text-warning' : 'text-danger'
-                                  }`}>
-                                    <div className={`w-1.5 h-1.5 rounded-full ${
-                                      backend.lastPing < 300 ? 'bg-success' : 
-                                      backend.lastPing < 1000 ? 'bg-warning' : 'bg-danger'
-                                    }`}></div>
-                                    {backend.lastPing < 100 ? '极快' : 
-                                     backend.lastPing < 300 ? '很快' : 
-                                     backend.lastPing < 1000 ? '良好' : '较慢'} 
+                                  <div
+                                    className={`flex items-center gap-1 text-xs ${
+                                      backend.lastPing < 300
+                                        ? 'text-success'
+                                        : backend.lastPing < 1000
+                                          ? 'text-warning'
+                                          : 'text-danger'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        backend.lastPing < 300
+                                          ? 'bg-success'
+                                          : backend.lastPing < 1000
+                                            ? 'bg-warning'
+                                            : 'bg-danger'
+                                      }`}
+                                    ></div>
+                                    {backend.lastPing < 100
+                                      ? '极快'
+                                      : backend.lastPing < 300
+                                        ? '很快'
+                                        : backend.lastPing < 1000
+                                          ? '良好'
+                                          : '较慢'}
                                     ({backend.lastPing}ms)
                                   </div>
                                 )}
                                 {!backend.lastPing && !isTestingBackends && (
-                                  <div className="text-xs text-default-400">
-                                    未测试
-                                  </div>
+                                  <div className="text-xs text-default-400">未测试</div>
                                 )}
                               </div>
                             </div>
@@ -1684,12 +1809,11 @@ rules:
                         </div>
                       ))}
                     </div>
-                    
+
                     <div className="text-xs text-default-500 text-center">
-                      {backends.length > 1 ? 
-                        '每10秒自动测试延迟，不会自动切换' : 
-                        '每10秒自动测试服务器连接状态'
-                      }
+                      {backends.length > 1
+                        ? '每10秒自动测试延迟，不会自动切换'
+                        : '每10秒自动测试服务器连接状态'}
                     </div>
                   </div>
                 </div>
@@ -1728,7 +1852,10 @@ rules:
             <h3 className="text-lg font-semibold">{t('userCenter.announcements')}</h3>
             <div className="flex items-center gap-2">
               {hasUnreadAnnouncements && (
-                <span className="w-2 h-2 rounded-full bg-danger animate-pulse" aria-label="未读公告提醒"></span>
+                <span
+                  className="w-2 h-2 rounded-full bg-danger animate-pulse"
+                  aria-label="未读公告提醒"
+                ></span>
               )}
               {loading.announcements && <Spinner size="sm" />}
             </div>
@@ -1740,18 +1867,18 @@ rules:
                   <p>加载失败: {errors.announcements}</p>
                 </div>
                 <div className="flex justify-center gap-2">
-                  <Button 
-                    variant="light" 
-                    size="sm" 
+                  <Button
+                    variant="light"
+                    size="sm"
                     onPress={() => fetchAnnouncements(true)}
                     isLoading={loading.announcements}
                   >
                     重试
                   </Button>
-                  <Button 
-                    variant="light" 
-                    size="sm" 
-                    onPress={() => setErrors(prev => ({ ...prev, announcements: null }))}
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onPress={() => setErrors((prev) => ({ ...prev, announcements: null }))}
                   >
                     关闭错误
                   </Button>
@@ -1769,11 +1896,13 @@ rules:
                 {announcements.map((announcement) => {
                   const isRead = readAnnouncementIds.has(announcement.id)
                   const previewText = announcement.content
-                    ? announcement.content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+                    ? announcement.content
+                        .replace(/<[^>]*>/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim()
                     : ''
-                  const truncatedPreview = previewText.length > 140
-                    ? `${previewText.slice(0, 140)}...`
-                    : previewText
+                  const truncatedPreview =
+                    previewText.length > 140 ? `${previewText.slice(0, 140)}...` : previewText
 
                   return (
                     <div
@@ -1791,7 +1920,9 @@ rules:
                     >
                       <div className="flex items-start gap-3">
                         <div className="pt-1">
-                          <span className={`block w-2 h-2 rounded-full ${isRead ? 'opacity-0' : 'bg-danger animate-pulse'}`}></span>
+                          <span
+                            className={`block w-2 h-2 rounded-full ${isRead ? 'opacity-0' : 'bg-danger animate-pulse'}`}
+                          ></span>
                         </div>
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-start justify-between gap-3">
@@ -1811,11 +1942,11 @@ rules:
                           {announcement.tags && announcement.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {announcement.tags.slice(0, 4).map((tag) => (
-                                <Chip 
-                                  key={`${announcement.id}-${tag}`} 
-                                  size="sm" 
-                                  variant="flat" 
-                                  color="primary" 
+                                <Chip
+                                  key={`${announcement.id}-${tag}`}
+                                  size="sm"
+                                  variant="flat"
+                                  color="primary"
                                   className="text-xs"
                                 >
                                   {tag}
@@ -1825,9 +1956,14 @@ rules:
                           )}
 
                           {truncatedPreview && (
-                            <p 
+                            <p
                               className="text-sm text-default-500"
-                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                              style={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden'
+                              }}
                             >
                               {truncatedPreview}
                             </p>
@@ -1855,11 +1991,7 @@ rules:
                     <span className="text-default-400">📢</span>
                   </div>
                   <p>暂无公告</p>
-                  <Button 
-                    variant="light" 
-                    size="sm" 
-                    onPress={() => fetchAnnouncements(true)}
-                  >
+                  <Button variant="light" size="sm" onPress={() => fetchAnnouncements(true)}>
                     刷新试试
                   </Button>
                 </div>
@@ -1878,9 +2010,9 @@ rules:
             {errors.userInfo ? (
               <div className="text-center py-8 text-danger">
                 <p>加载失败: {errors.userInfo}</p>
-                <Button 
-                  variant="light" 
-                  size="sm" 
+                <Button
+                  variant="light"
+                  size="sm"
                   onPress={() => fetchUserInfo(true)}
                   className="mt-2"
                 >
@@ -1894,25 +2026,19 @@ rules:
                     <div className="text-2xl font-bold text-blue-600">
                       {formatBytes(userInfo.traffic.upload)}
                     </div>
-                    <div className="text-sm text-default-500 mt-1">
-                      {t('userCenter.upload')}
-                    </div>
+                    <div className="text-sm text-default-500 mt-1">{t('userCenter.upload')}</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-600">
                       {formatBytes(userInfo.traffic.download)}
                     </div>
-                    <div className="text-sm text-default-500 mt-1">
-                      {t('userCenter.download')}
-                    </div>
+                    <div className="text-sm text-default-500 mt-1">{t('userCenter.download')}</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-orange-600">
                       {formatBytes(userInfo.traffic.upload + userInfo.traffic.download)}
                     </div>
-                    <div className="text-sm text-default-500 mt-1">
-                      {t('userCenter.totalUsed')}
-                    </div>
+                    <div className="text-sm text-default-500 mt-1">{t('userCenter.totalUsed')}</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-600">
@@ -1923,15 +2049,21 @@ rules:
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span>使用进度</span>
                     <span>{getUsagePercentage().toFixed(1)}%</span>
                   </div>
-                  <Progress 
-                    value={getUsagePercentage()} 
-                    color={getUsagePercentage() > 80 ? 'danger' : getUsagePercentage() > 60 ? 'warning' : 'primary'}
+                  <Progress
+                    value={getUsagePercentage()}
+                    color={
+                      getUsagePercentage() > 80
+                        ? 'danger'
+                        : getUsagePercentage() > 60
+                          ? 'warning'
+                          : 'primary'
+                    }
                     className="h-3"
                   />
                 </div>
@@ -1939,8 +2071,12 @@ rules:
                 <div className="pt-4 border-t border-default-200">
                   <div className="flex justify-between">
                     <span className="font-medium">{t('userCenter.expire')}:</span>
-                    <span className={isExpiringSoon() ? 'text-warning font-medium' : 'text-foreground'}>
-                      {userInfo.traffic.expire ? formatDate(userInfo.traffic.expire) : t('sider.cards.neverExpire')}
+                    <span
+                      className={isExpiringSoon() ? 'text-warning font-medium' : 'text-foreground'}
+                    >
+                      {userInfo.traffic.expire
+                        ? formatDate(userInfo.traffic.expire)
+                        : t('sider.cards.neverExpire')}
                       {isExpiringSoon() && <span className="ml-2 text-xs">(即将过期)</span>}
                     </span>
                   </div>
@@ -1972,7 +2108,11 @@ rules:
                 disabled={isTestingBackends}
                 className="text-xs min-w-fit px-3 shadow-sm"
               >
-                {isTestingBackends ? '测试中...' : (backends.length > 1 ? '测试并选择最优' : '测试延迟')}
+                {isTestingBackends
+                  ? '测试中...'
+                  : backends.length > 1
+                    ? '测试并选择最优'
+                    : '测试延迟'}
               </Button>
             </CardHeader>
             <Divider />
@@ -1989,8 +2129,8 @@ rules:
                   <div
                     key={backend.id}
                     className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 hover:border-primary hover:shadow-sm ${
-                      selectedBackend?.id === backend.id 
-                        ? 'border-primary bg-primary/5 shadow-sm' 
+                      selectedBackend?.id === backend.id
+                        ? 'border-primary bg-primary/5 shadow-sm'
                         : 'border-default-200 hover:bg-default-100'
                     }`}
                     onClick={() => {
@@ -2010,7 +2150,12 @@ rules:
                             </Chip>
                           )}
                           {selectedBackend?.id === backend.id && (
-                            <Chip size="sm" color="secondary" variant="bordered" className="text-xs">
+                            <Chip
+                              size="sm"
+                              color="secondary"
+                              variant="bordered"
+                              className="text-xs"
+                            >
                               当前选择
                             </Chip>
                           )}
@@ -2018,37 +2163,53 @@ rules:
                             <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
                           )}
                         </div>
-                        
+
                         <div className="flex items-center gap-3">
                           {backend.isActive !== undefined && (
-                            <div className={`flex items-center gap-1 text-xs ${
-                              backend.isActive ? 'text-success' : 'text-danger'
-                            }`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${
-                                backend.isActive ? 'bg-success' : 'bg-danger'
-                              }`}></div>
+                            <div
+                              className={`flex items-center gap-1 text-xs ${
+                                backend.isActive ? 'text-success' : 'text-danger'
+                              }`}
+                            >
+                              <div
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  backend.isActive ? 'bg-success' : 'bg-danger'
+                                }`}
+                              ></div>
                               {backend.isActive ? '在线' : '离线'}
                             </div>
                           )}
                           {backend.lastPing && (
-                            <div className={`flex items-center gap-1 text-xs ${
-                              backend.lastPing < 300 ? 'text-success' : 
-                              backend.lastPing < 1000 ? 'text-warning' : 'text-danger'
-                            }`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${
-                                backend.lastPing < 300 ? 'bg-success' : 
-                                backend.lastPing < 1000 ? 'bg-warning' : 'bg-danger'
-                              }`}></div>
-                              {backend.lastPing < 100 ? '极快' : 
-                               backend.lastPing < 300 ? '很快' : 
-                               backend.lastPing < 1000 ? '良好' : '较慢'} 
+                            <div
+                              className={`flex items-center gap-1 text-xs ${
+                                backend.lastPing < 300
+                                  ? 'text-success'
+                                  : backend.lastPing < 1000
+                                    ? 'text-warning'
+                                    : 'text-danger'
+                              }`}
+                            >
+                              <div
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  backend.lastPing < 300
+                                    ? 'bg-success'
+                                    : backend.lastPing < 1000
+                                      ? 'bg-warning'
+                                      : 'bg-danger'
+                                }`}
+                              ></div>
+                              {backend.lastPing < 100
+                                ? '极快'
+                                : backend.lastPing < 300
+                                  ? '很快'
+                                  : backend.lastPing < 1000
+                                    ? '良好'
+                                    : '较慢'}
                               ({backend.lastPing}ms)
                             </div>
                           )}
                           {!backend.lastPing && !isTestingBackends && (
-                            <div className="text-xs text-default-400">
-                              未测试
-                            </div>
+                            <div className="text-xs text-default-400">未测试</div>
                           )}
                         </div>
                       </div>
@@ -2065,8 +2226,8 @@ rules:
         )}
 
         {/* 公告详情模态框 */}
-        <Modal 
-          isOpen={isModalOpen} 
+        <Modal
+          isOpen={isModalOpen}
           onOpenChange={setIsModalOpen}
           size="2xl"
           scrollBehavior="inside"
@@ -2077,12 +2238,7 @@ rules:
                 <h3 className="text-xl font-bold">{selectedAnnouncement?.title}</h3>
                 <span className="text-sm text-default-500">{selectedAnnouncement?.date}</span>
               </div>
-              <Button
-                isIconOnly
-                variant="light"
-                size="sm"
-                onPress={() => setIsModalOpen(false)}
-              >
+              <Button isIconOnly variant="light" size="sm" onPress={() => setIsModalOpen(false)}>
                 <IoCloseOutline />
               </Button>
             </ModalHeader>
@@ -2114,9 +2270,9 @@ rules:
               )}
 
               <div className="prose max-w-none">
-                <div 
+                <div
                   className="whitespace-pre-wrap leading-relaxed text-foreground"
-                  dangerouslySetInnerHTML={{ 
+                  dangerouslySetInnerHTML={{
                     __html: selectedAnnouncement?.content?.replace(/\n/g, '<br>') || ''
                   }}
                 />

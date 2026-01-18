@@ -1,7 +1,21 @@
-import { ChildProcess, exec, execFile, spawn } from 'child_process'
+import { ChildProcess, execFile, spawn } from 'child_process'
+import { readFile, rm, writeFile } from 'fs/promises'
+import { promisify } from 'util'
+import path from 'path'
+import os from 'os'
+import { createWriteStream, existsSync } from 'fs'
+import chokidar, { FSWatcher } from 'chokidar'
+import { app, ipcMain } from 'electron'
+import { mainWindow } from '../window'
+import {
+  getAppConfig,
+  getControledMihomoConfig,
+  patchControledMihomoConfig,
+  manageSmartOverride
+} from '../config'
 import {
   dataDir,
-  logPath,
+  coreLogPath,
   mihomoCoreDir,
   mihomoCorePath,
   mihomoProfileWorkDir,
@@ -9,15 +23,11 @@ import {
   mihomoWorkConfigPath,
   mihomoWorkDir
 } from '../utils/dirs'
-import { generateProfile } from './factory'
-import {
-  getAppConfig,
-  getControledMihomoConfig,
-  getProfileConfig,
-  patchAppConfig,
-  patchControledMihomoConfig
-} from '../config'
-import { app, dialog, ipcMain, net } from 'electron'
+import { uploadRuntimeConfig } from '../resolve/gistApi'
+import { startMonitor } from '../resolve/trafficMonitor'
+import { safeShowErrorBox } from '../utils/init'
+import i18next from '../../shared/i18n'
+import { managerLogger } from '../utils/logger'
 import {
   startMihomoTraffic,
   startMihomoConnections,
@@ -27,219 +37,396 @@ import {
   stopMihomoTraffic,
   stopMihomoLogs,
   stopMihomoMemory,
-  patchMihomoConfig
+  patchMihomoConfig,
+  getAxios
 } from './mihomoApi'
-import chokidar from 'chokidar'
-import { readFile, rm, writeFile } from 'fs/promises'
-import { promisify } from 'util'
-import { mainWindow } from '..'
-import path from 'path'
-import os from 'os'
-import { createWriteStream, existsSync } from 'fs'
-import { uploadRuntimeConfig } from '../resolve/gistApi'
-import { startMonitor } from '../resolve/trafficMonitor'
-import i18next from '../../shared/i18n'
+import { generateProfile } from './factory'
+import { getSessionAdminStatus } from './permissions'
+import {
+  cleanupSocketFile,
+  cleanupWindowsNamedPipes,
+  validateWindowsPipeAccess,
+  waitForCoreReady
+} from './process'
+import { setPublicDNS, recoverDNS } from './dns'
 
-chokidar.watch(path.join(mihomoCoreDir(), 'meta-update'), {}).on('unlinkDir', async () => {
-  try {
-    await stopCore(true)
-    await startCore()
-  } catch (e) {
-    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
-  }
-})
+// 重新导出权限相关函数
+export {
+  initAdminStatus,
+  getSessionAdminStatus,
+  checkAdminPrivileges,
+  checkMihomoCorePermissions,
+  checkHighPrivilegeCore,
+  grantTunPermissions,
+  restartAsAdmin,
+  requestTunPermissions,
+  showTunPermissionDialog,
+  showErrorDialog,
+  checkTunPermissions,
+  manualGrantCorePermition
+} from './permissions'
 
-export const mihomoIpcPath =
-  process.platform === 'win32' ? '\\\\.\\pipe\\MihomoParty\\mihomo' : '/tmp/mihomo-party.sock'
+export { getDefaultDevice } from './dns'
+
+const execFilePromise = promisify(execFile)
 const ctlParam = process.platform === 'win32' ? '-ext-ctl-pipe' : '-ext-ctl-unix'
 
-let setPublicDNSTimer: NodeJS.Timeout | null = null
-let recoverDNSTimer: NodeJS.Timeout | null = null
+// 核心进程状态
 let child: ChildProcess
 let retry = 10
+let isRestarting = false
 
-export async function startCore(detached = false): Promise<Promise<void>[]> {
+// 文件监听器
+let coreWatcher: FSWatcher | null = null
+
+// 初始化核心文件监听
+export function initCoreWatcher(): void {
+  if (coreWatcher) return
+
+  coreWatcher = chokidar.watch(path.join(mihomoCoreDir(), 'meta-update'), {})
+  coreWatcher.on('unlinkDir', async () => {
+    // 等待核心自我更新完成，避免与核心自动重启产生竞态
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+    try {
+      await stopCore(true)
+      await startCore()
+    } catch (e) {
+      safeShowErrorBox('mihomo.error.coreStartFailed', `${e}`)
+    }
+  })
+}
+
+// 清理核心文件监听
+export function cleanupCoreWatcher(): void {
+  if (coreWatcher) {
+    coreWatcher.close()
+    coreWatcher = null
+  }
+}
+
+// 动态生成 IPC 路径
+export const getMihomoIpcPath = (): string => {
+  if (process.platform === 'win32') {
+    const isAdmin = getSessionAdminStatus()
+    const sessionId = process.env.SESSIONNAME || process.env.USERNAME || 'default'
+    const processId = process.pid
+
+    return isAdmin
+      ? `\\\\.\\pipe\\MihomoParty\\mihomo-admin-${sessionId}-${processId}`
+      : `\\\\.\\pipe\\MihomoParty\\mihomo-user-${sessionId}-${processId}`
+  }
+
+  const uid = process.getuid?.() || 'unknown'
+  const processId = process.pid
+  return `/tmp/mihomo-party-${uid}-${processId}.sock`
+}
+
+// 核心配置接口
+interface CoreConfig {
+  corePath: string
+  workDir: string
+  ipcPath: string
+  logLevel: LogLevel
+  tunEnabled: boolean
+  autoSetDNS: boolean
+  cpuPriority: string
+  detached: boolean
+}
+
+// 准备核心配置
+async function prepareCore(detached: boolean): Promise<CoreConfig> {
+  const [appConfig, mihomoConfig] = await Promise.all([
+    getAppConfig(),
+    getControledMihomoConfig()
+  ])
+
   const {
     core = 'mihomo',
     autoSetDNS = true,
     diffWorkDir = false,
     mihomoCpuPriority = 'PRIORITY_NORMAL',
-    disableLoopbackDetector = false,
-    disableEmbedCA = false,
-    disableSystemCA = false,
-    skipSafePathCheck = false
-  } = await getAppConfig()
-  const { 'log-level': logLevel } = await getControledMihomoConfig()
-  if (existsSync(path.join(dataDir(), 'core.pid'))) {
-    const pid = parseInt(await readFile(path.join(dataDir(), 'core.pid'), 'utf-8'))
+    testProfileOnStart = true
+  } = appConfig
+
+  const { 'log-level': logLevel = 'info' as LogLevel, tun } = mihomoConfig
+
+  // 清理旧进程
+  const pidPath = path.join(dataDir(), 'core.pid')
+  if (existsSync(pidPath)) {
+    const pid = parseInt(await readFile(pidPath, 'utf-8'))
     try {
       process.kill(pid, 'SIGINT')
     } catch {
       // ignore
     } finally {
-      await rm(path.join(dataDir(), 'core.pid'))
+      await rm(pidPath)
     }
   }
-  const { current } = await getProfileConfig()
-  const { tun } = await getControledMihomoConfig()
-  const corePath = mihomoCorePath(core)
-  await generateProfile()
-  await checkProfile()
+
+  // 管理 Smart 内核覆写配置
+  await manageSmartOverride()
+
+  // generateProfile 返回实际使用的 current
+  const current = await generateProfile()
+  if (testProfileOnStart) {
+    await checkProfile(current, core, diffWorkDir)
+  }
   await stopCore()
+  await cleanupSocketFile()
+
+  // 设置 DNS
   if (tun?.enable && autoSetDNS) {
     try {
       await setPublicDNS()
     } catch (error) {
-      await writeFile(logPath(), `[Manager]: set dns failed, ${error}`, {
-        flag: 'a'
-      })
+      managerLogger.error('set dns failed', error)
     }
   }
-  const stdout = createWriteStream(logPath(), { flags: 'a' })
-  const stderr = createWriteStream(logPath(), { flags: 'a' })
-  const env = {
-    DISABLE_LOOPBACK_DETECTOR: String(disableLoopbackDetector),
-    DISABLE_EMBED_CA: String(disableEmbedCA),
-    DISABLE_SYSTEM_CA: String(disableSystemCA),
-    SKIP_SAFE_PATH_CHECK: String(skipSafePathCheck)
+
+  // 获取动态 IPC 路径
+  const ipcPath = getMihomoIpcPath()
+  managerLogger.info(`Using IPC path: ${ipcPath}`)
+
+  if (process.platform === 'win32') {
+    await validateWindowsPipeAccess(ipcPath)
   }
-  child = spawn(
-    corePath,
-    ['-d', diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), ctlParam, mihomoIpcPath],
-    {
-      detached: detached,
-      stdio: detached ? 'ignore' : undefined,
-      env: env
+
+  return {
+    corePath: mihomoCorePath(core),
+    workDir: diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(),
+    ipcPath,
+    logLevel,
+    tunEnabled: tun?.enable ?? false,
+    autoSetDNS,
+    cpuPriority: mihomoCpuPriority,
+    detached
+  }
+}
+
+// 启动核心进程
+function spawnCoreProcess(config: CoreConfig): ChildProcess {
+  const { corePath, workDir, ipcPath, cpuPriority, detached } = config
+
+  const stdout = createWriteStream(coreLogPath(), { flags: 'a' })
+  const stderr = createWriteStream(coreLogPath(), { flags: 'a' })
+
+  const proc = spawn(corePath, ['-d', workDir, ctlParam, ipcPath], {
+    detached,
+    stdio: detached ? 'ignore' : undefined
+  })
+
+  if (process.platform === 'win32' && proc.pid) {
+    os.setPriority(proc.pid, os.constants.priority[cpuPriority as keyof typeof os.constants.priority])
+  }
+
+  if (!detached) {
+    proc.stdout?.pipe(stdout)
+    proc.stderr?.pipe(stderr)
+  }
+
+  return proc
+}
+
+// 设置核心进程事件监听
+function setupCoreListeners(
+  proc: ChildProcess,
+  logLevel: LogLevel,
+  resolve: (value: Promise<void>[]) => void,
+  reject: (reason: unknown) => void
+): void {
+  proc.on('close', async (code, signal) => {
+    managerLogger.info(`Core closed, code: ${code}, signal: ${signal}`)
+
+    if (isRestarting) {
+      managerLogger.info('Core closed during restart, skipping auto-restart')
+      return
     }
-  )
-  if (process.platform === 'win32' && child.pid) {
-    os.setPriority(child.pid, os.constants.priority[mihomoCpuPriority])
-  }
-  if (detached) {
-    child.unref()
-    return new Promise((resolve) => {
-      resolve([new Promise(() => {})])
-    })
-  }
-  child.on('close', async (code, signal) => {
-    await writeFile(logPath(), `[Manager]: Core closed, code: ${code}, signal: ${signal}\n`, {
-      flag: 'a'
-    })
+
     if (retry) {
-      await writeFile(logPath(), `[Manager]: Try Restart Core\n`, { flag: 'a' })
+      managerLogger.info('Try Restart Core')
       retry--
       await restartCore()
     } else {
       await stopCore()
     }
   })
-  child.stdout?.pipe(stdout)
-  child.stderr?.pipe(stderr)
-  return new Promise((resolve, reject) => {
-    child.stdout?.on('data', async (data) => {
-      const str = data.toString()
-      if (str.includes('configure tun interface: operation not permitted')) {
-        patchControledMihomoConfig({ tun: { enable: false } })
-        mainWindow?.webContents.send('controledMihomoConfigUpdated')
-        ipcMain.emit('updateTrayMenu')
-        reject(i18next.t('tun.error.tunPermissionDenied'))
+
+  proc.stdout?.on('data', async (data) => {
+    const str = data.toString()
+
+    // TUN 权限错误
+    if (str.includes('configure tun interface: operation not permitted')) {
+      patchControledMihomoConfig({ tun: { enable: false } })
+      mainWindow?.webContents.send('controledMihomoConfigUpdated')
+      ipcMain.emit('updateTrayMenu')
+      reject(i18next.t('tun.error.tunPermissionDenied'))
+      return
+    }
+
+    // 控制器监听错误
+    const isControllerError =
+      (process.platform !== 'win32' && str.includes('External controller unix listen error')) ||
+      (process.platform === 'win32' && str.includes('External controller pipe listen error'))
+
+    if (isControllerError) {
+      managerLogger.error('External controller listen error detected:', str)
+
+      if (process.platform === 'win32') {
+        managerLogger.info('Attempting Windows pipe cleanup and retry...')
+        try {
+          await cleanupWindowsNamedPipes()
+          await new Promise((r) => setTimeout(r, 2000))
+        } catch (cleanupError) {
+          managerLogger.error('Pipe cleanup failed:', cleanupError)
+        }
       }
 
-      if ((process.platform !== 'win32' && str.includes('External controller unix listen error')) ||
-        (process.platform === 'win32' && str.includes('External controller pipe listen error'))
-      ) {
-        reject(i18next.t('mihomo.error.externalControllerListenError'))
-      }
+      reject(i18next.t('mihomo.error.externalControllerListenError'))
+      return
+    }
 
-      if (
-        (process.platform !== 'win32' && str.includes('RESTful API unix listening at')) ||
-        (process.platform === 'win32' && str.includes('RESTful API pipe listening at'))
-      ) {
-        resolve([
-          new Promise((resolve) => {
-            child.stdout?.on('data', async (data) => {
-              if (data.toString().toLowerCase().includes('start initial compatible provider default')) {
-                try {
-                  mainWindow?.webContents.send('groupsUpdated')
-                  mainWindow?.webContents.send('rulesUpdated')
-                  await uploadRuntimeConfig()
-                } catch {
-                  // ignore
-                }
-                await patchMihomoConfig({ 'log-level': logLevel })
-                resolve()
+    // API 就绪
+    const isApiReady =
+      (process.platform !== 'win32' && str.includes('RESTful API unix listening at')) ||
+      (process.platform === 'win32' && str.includes('RESTful API pipe listening at'))
+
+    if (isApiReady) {
+      resolve([
+        new Promise((innerResolve) => {
+          proc.stdout?.on('data', async (innerData) => {
+            if (
+              innerData.toString().toLowerCase().includes('start initial compatible provider default')
+            ) {
+              try {
+                mainWindow?.webContents.send('groupsUpdated')
+                mainWindow?.webContents.send('rulesUpdated')
+                await uploadRuntimeConfig()
+              } catch {
+                // ignore
               }
-            })
+              await patchMihomoConfig({ 'log-level': logLevel })
+              innerResolve()
+            }
           })
-        ])
-        await startMihomoTraffic()
-        await startMihomoConnections()
-        await startMihomoLogs()
-        await startMihomoMemory()
-        retry = 10
-      }
-    })
+        })
+      ])
+
+      await waitForCoreReady()
+      await getAxios(true)
+      await startMihomoTraffic()
+      await startMihomoConnections()
+      await startMihomoLogs()
+      await startMihomoMemory()
+      retry = 10
+    }
   })
 }
 
+// 启动核心
+export async function startCore(detached = false): Promise<Promise<void>[]> {
+  const config = await prepareCore(detached)
+  child = spawnCoreProcess(config)
+
+  if (detached) {
+    managerLogger.info(
+      `Core process detached successfully on ${process.platform}, PID: ${child.pid}`
+    )
+    child.unref()
+    return [new Promise(() => {})]
+  }
+
+  return new Promise((resolve, reject) => {
+    setupCoreListeners(child, config.logLevel, resolve, reject)
+  })
+}
+
+// 停止核心
 export async function stopCore(force = false): Promise<void> {
   try {
     if (!force) {
       await recoverDNS()
     }
   } catch (error) {
-    await writeFile(logPath(), `[Manager]: recover dns failed, ${error}`, {
-      flag: 'a'
-    })
+    managerLogger.error('recover dns failed', error)
   }
 
   if (child) {
     child.removeAllListeners()
     child.kill('SIGINT')
   }
+
   stopMihomoTraffic()
   stopMihomoConnections()
   stopMihomoLogs()
   stopMihomoMemory()
+
+  try {
+    await getAxios(true)
+  } catch (error) {
+    managerLogger.warn('Failed to refresh axios instance:', error)
+  }
+
+  await cleanupSocketFile()
 }
 
+// 重启核心
 export async function restartCore(): Promise<void> {
+  if (isRestarting) {
+    managerLogger.info('Core restart already in progress, skipping duplicate request')
+    return
+  }
+
+  isRestarting = true
   try {
     await startCore()
   } catch (e) {
-    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
+    managerLogger.error('restart core failed', e)
+    throw e
+  } finally {
+    isRestarting = false
   }
 }
 
+// 保持核心运行
 export async function keepCoreAlive(): Promise<void> {
   try {
     await startCore(true)
-    if (child && child.pid) {
+    if (child?.pid) {
       await writeFile(path.join(dataDir(), 'core.pid'), child.pid.toString())
     }
   } catch (e) {
-    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
+    safeShowErrorBox('mihomo.error.coreStartFailed', `${e}`)
   }
 }
 
+// 退出但保持核心运行
 export async function quitWithoutCore(): Promise<void> {
-  await keepCoreAlive()
+  managerLogger.info(`Starting lightweight mode on platform: ${process.platform}`)
+
+  try {
+    await startCore(true)
+    if (child?.pid) {
+      await writeFile(path.join(dataDir(), 'core.pid'), child.pid.toString())
+      managerLogger.info(`Core started in lightweight mode with PID: ${child.pid}`)
+    }
+  } catch (e) {
+    managerLogger.error('Failed to start core in lightweight mode:', e)
+    safeShowErrorBox('mihomo.error.coreStartFailed', `${e}`)
+  }
+
   await startMonitor(true)
+  managerLogger.info('Exiting main process, core will continue running in background')
   app.exit()
 }
 
-async function checkProfile(): Promise<void> {
-  const {
-    core = 'mihomo',
-    diffWorkDir = false,
-    skipSafePathCheck = false
-  } = await getAppConfig()
-  const { current } = await getProfileConfig()
+// 检查配置文件
+async function checkProfile(
+  current: string | undefined,
+  core: string = 'mihomo',
+  diffWorkDir: boolean = false
+): Promise<void> {
   const corePath = mihomoCorePath(core)
-  const execFilePromise = promisify(execFile)
-  const env = {
-    SKIP_SAFE_PATH_CHECK: String(skipSafePathCheck)
-  }
+
   try {
     await execFilePromise(corePath, [
       '-t',
@@ -247,104 +434,42 @@ async function checkProfile(): Promise<void> {
       diffWorkDir ? mihomoWorkConfigPath(current) : mihomoWorkConfigPath('work'),
       '-d',
       mihomoTestDir()
-    ], { env })
+    ])
   } catch (error) {
+    managerLogger.error('Profile check failed', error)
+
     if (error instanceof Error && 'stdout' in error) {
-      const { stdout } = error as { stdout: string }
+      const { stdout, stderr } = error as { stdout: string; stderr?: string }
+      managerLogger.info('Profile check stdout', stdout)
+      managerLogger.info('Profile check stderr', stderr)
+
       const errorLines = stdout
         .split('\n')
-        .filter((line) => line.includes('level=error'))
-        .map((line) => line.split('level=error')[1])
-      throw new Error(`${i18next.t('mihomo.error.profileCheckFailed')}:\n${errorLines.join('\n')}`)
+        .filter((line) => line.includes('level=error') || line.includes('error'))
+        .map((line) => {
+          if (line.includes('level=error')) {
+            return line.split('level=error')[1]?.trim() || line
+          }
+          return line.trim()
+        })
+        .filter((line) => line.length > 0)
+
+      if (errorLines.length === 0) {
+        const allLines = stdout.split('\n').filter((line) => line.trim().length > 0)
+        throw new Error(`${i18next.t('mihomo.error.profileCheckFailed')}:\n${allLines.join('\n')}`)
+      } else {
+        throw new Error(
+          `${i18next.t('mihomo.error.profileCheckFailed')}:\n${errorLines.join('\n')}`
+        )
+      }
     } else {
-      throw error
+      throw new Error(`${i18next.t('mihomo.error.profileCheckFailed')}: ${error}`)
     }
   }
 }
 
-export async function manualGrantCorePermition(): Promise<void> {
-  const { core = 'mihomo' } = await getAppConfig()
-  const corePath = mihomoCorePath(core)
-  const execPromise = promisify(exec)
-  const execFilePromise = promisify(execFile)
-  if (process.platform === 'darwin') {
-    const shell = `chown root:admin ${corePath.replace(' ', '\\\\ ')}\nchmod +sx ${corePath.replace(' ', '\\\\ ')}`
-    const command = `do shell script "${shell}" with administrator privileges`
-    await execPromise(`osascript -e '${command}'`)
-  }
-  if (process.platform === 'linux') {
-    await execFilePromise('pkexec', [
-      'bash',
-      '-c',
-      `chown root:root "${corePath}" && chmod +sx "${corePath}"`
-    ])
-  }
-}
-
-export async function getDefaultDevice(): Promise<string> {
-  const execPromise = promisify(exec)
-  const { stdout: deviceOut } = await execPromise(`route -n get default`)
-  let device = deviceOut.split('\n').find((s) => s.includes('interface:'))
-  device = device?.trim().split(' ').slice(1).join(' ')
-  if (!device) throw new Error('Get device failed')
-  return device
-}
-
-async function getDefaultService(): Promise<string> {
-  const execPromise = promisify(exec)
-  const device = await getDefaultDevice()
-  const { stdout: order } = await execPromise(`networksetup -listnetworkserviceorder`)
-  const block = order.split('\n\n').find((s) => s.includes(`Device: ${device}`))
-  if (!block) throw new Error('Get networkservice failed')
-  for (const line of block.split('\n')) {
-    if (line.match(/^\(\d+\).*/)) {
-      return line.trim().split(' ').slice(1).join(' ')
-    }
-  }
-  throw new Error('Get service failed')
-}
-
-async function getOriginDNS(): Promise<void> {
-  const execPromise = promisify(exec)
-  const service = await getDefaultService()
-  const { stdout: dns } = await execPromise(`networksetup -getdnsservers "${service}"`)
-  if (dns.startsWith("There aren't any DNS Servers set on")) {
-    await patchAppConfig({ originDNS: 'Empty' })
-  } else {
-    await patchAppConfig({ originDNS: dns.trim().replace(/\n/g, ' ') })
-  }
-}
-
-async function setDNS(dns: string): Promise<void> {
-  const service = await getDefaultService()
-  const execPromise = promisify(exec)
-  await execPromise(`networksetup -setdnsservers "${service}" ${dns}`)
-}
-
-async function setPublicDNS(): Promise<void> {
-  if (process.platform !== 'darwin') return
-  if (net.isOnline()) {
-    const { originDNS } = await getAppConfig()
-    if (!originDNS) {
-      await getOriginDNS()
-      await setDNS('223.5.5.5')
-    }
-  } else {
-    if (setPublicDNSTimer) clearTimeout(setPublicDNSTimer)
-    setPublicDNSTimer = setTimeout(() => setPublicDNS(), 5000)
-  }
-}
-
-async function recoverDNS(): Promise<void> {
-  if (process.platform !== 'darwin') return
-  if (net.isOnline()) {
-    const { originDNS } = await getAppConfig()
-    if (originDNS) {
-      await setDNS(originDNS)
-      await patchAppConfig({ originDNS: undefined })
-    }
-  } else {
-    if (recoverDNSTimer) clearTimeout(recoverDNSTimer)
-    recoverDNSTimer = setTimeout(() => recoverDNS(), 5000)
-  }
+// 权限检查入口（从 permissions.ts 调用）
+export async function checkAdminRestartForTun(): Promise<void> {
+  const { checkAdminRestartForTun: check } = await import('./permissions')
+  await check(restartCore)
 }

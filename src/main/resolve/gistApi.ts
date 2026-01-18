@@ -1,4 +1,4 @@
-import axios from 'axios'
+import * as chromeRequest from '../utils/chromeRequest'
 import { getAppConfig, getControledMihomoConfig } from '../config'
 import { getRuntimeConfigStr } from '../core/factory'
 
@@ -10,7 +10,7 @@ interface GistInfo {
 
 async function listGists(token: string): Promise<GistInfo[]> {
   const { 'mixed-port': port = 7890 } = await getControledMihomoConfig()
-  const res = await axios.get('https://api.github.com/gists', {
+  const res = await chromeRequest.get('https://api.github.com/gists', {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
@@ -23,17 +23,17 @@ async function listGists(token: string): Promise<GistInfo[]> {
     },
     responseType: 'json'
   })
-  return res.data as GistInfo[]
+  return Array.isArray(res.data) ? res.data : []
 }
 
 async function createGist(token: string, content: string): Promise<void> {
   const { 'mixed-port': port = 7890 } = await getControledMihomoConfig()
-  return await axios.post(
+  await chromeRequest.post(
     'https://api.github.com/gists',
     {
-      description: 'Auto Synced Mihomo Party Runtime Config',
+      description: 'Auto Synced Clash Party Runtime Config',
       public: false,
-      files: { 'mihomo-party.yaml': { content } }
+      files: { 'clash-party.yaml': { content } }
     },
     {
       headers: {
@@ -52,11 +52,11 @@ async function createGist(token: string, content: string): Promise<void> {
 
 async function updateGist(token: string, id: string, content: string): Promise<void> {
   const { 'mixed-port': port = 7890 } = await getControledMihomoConfig()
-  return await axios.patch(
+  await chromeRequest.patch(
     `https://api.github.com/gists/${id}`,
     {
-      description: 'Auto Synced Mihomo Party Runtime Config',
-      files: { 'mihomo-party.yaml': { content } }
+      description: 'Auto Synced Clash Party Runtime Config',
+      files: { 'clash-party.yaml': { content } }
     },
     {
       headers: {
@@ -77,15 +77,13 @@ export async function getGistUrl(): Promise<string> {
   const { githubToken } = await getAppConfig()
   if (!githubToken) return ''
   const gists = await listGists(githubToken)
-  const gist = gists.find((gist) => gist.description === 'Auto Synced Mihomo Party Runtime Config')
+  const gist = gists.find((gist) => gist.description === 'Auto Synced Clash Party Runtime Config')
   if (gist) {
     return gist.html_url
   } else {
     await uploadRuntimeConfig()
     const gists = await listGists(githubToken)
-    const gist = gists.find(
-      (gist) => gist.description === 'Auto Synced Mihomo Party Runtime Config'
-    )
+    const gist = gists.find((gist) => gist.description === 'Auto Synced Clash Party Runtime Config')
     if (!gist) throw new Error('Gist not found')
     return gist.html_url
   }
@@ -95,7 +93,7 @@ export async function uploadRuntimeConfig(): Promise<void> {
   const { githubToken } = await getAppConfig()
   if (!githubToken) return
   const gists = await listGists(githubToken)
-  const gist = gists.find((gist) => gist.description === 'Auto Synced Mihomo Party Runtime Config')
+  const gist = gists.find((gist) => gist.description === 'Auto Synced Clash Party Runtime Config')
   const config = await getRuntimeConfigStr()
   if (gist) {
     await updateGist(githubToken, gist.id, config)

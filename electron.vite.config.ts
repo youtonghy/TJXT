@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 // https://github.com/vdesjs/vite-plugin-monaco-editor/issues/21#issuecomment-1827562674
 import monacoEditorPluginModule from 'vite-plugin-monaco-editor'
 const isObjectWithDefaultFunction = (
@@ -14,12 +15,28 @@ const monacoEditorPlugin = isObjectWithDefaultFunction(monacoEditorPluginModule)
   ? monacoEditorPluginModule.default
   : monacoEditorPluginModule
 
+// Win7 build: bundle all deps (Vite converts ESM→CJS), only externalize native modules
+const isLegacyBuild = process.env.LEGACY_BUILD === 'true'
+const legacyExternal = ['sysproxy-rs', 'electron']
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: isLegacyBuild ? [] : [externalizeDepsPlugin()],
+    build: isLegacyBuild
+      ? { rollupOptions: { external: legacyExternal, output: { format: 'cjs' } } }
+      : undefined
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: isLegacyBuild ? [] : [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        external: isLegacyBuild ? legacyExternal : undefined,
+        output: {
+          format: 'cjs',
+          entryFileNames: '[name].cjs'
+        }
+      }
+    }
   },
   renderer: {
     build: {
@@ -37,6 +54,7 @@ export default defineConfig({
     },
     plugins: [
       react(),
+      tailwindcss(),
       monacoEditorPlugin({
         languageWorkers: ['editorWorkerService', 'typescript', 'css'],
         customDistPath: (_, out) => `${out}/monacoeditorwork`,

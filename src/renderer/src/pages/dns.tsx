@@ -1,38 +1,23 @@
-/**
- * 页面：DNS
- * Page: DNS
- */
-
-// ======================== 导入区 ========================
-// React 核心
-import React, { Key, ReactNode, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-
-// UI 组件
 import { Button, Tab, Input, Switch, Tabs, Divider } from '@heroui/react'
-
-// 图标
-import { MdDeleteForever } from 'react-icons/md'
-
-// 自定义组件
 import BasePage from '@renderer/components/base/base-page'
+import { showErrorSync } from '@renderer/utils/error-display'
+import { MdDeleteForever } from 'react-icons/md'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'
-
-// Hooks
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
-
-// 工具函数
-import { restartCore } from '@renderer/utils/ipc'
+import { restartCore, patchMihomoConfig } from '@renderer/utils/ipc'
+import React, { Key, ReactNode, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const DNS: React.FC = () => {
   const { t } = useTranslation()
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { appConfig, patchAppConfig } = useAppConfig()
-  const { nameserverPolicy, useNameserverPolicy } = appConfig || {}
+  const { nameserverPolicy, useNameserverPolicy, controlDns = true } = appConfig || {}
   const { dns, hosts } = controledMihomoConfig || {}
   const {
+    enable = true,
     ipv6 = false,
     'fake-ip-range': fakeIPRange = '198.18.0.1/16',
     'fake-ip-filter': fakeIPFilter = [
@@ -53,10 +38,18 @@ const DNS: React.FC = () => {
       'https://doh.pub/dns-query',
       'https://dns.alidns.com/dns-query'
     ],
-    'direct-nameserver': directNameserver = []
+    'direct-nameserver': directNameserver = [],
+    fallback = [],
+    'fallback-filter': fallbackFilter = {
+      geoip: true,
+      'geoip-code': 'CN',
+      ipcidr: ['240.0.0.0/4', '0.0.0.0/32'],
+      domain: ['+.google.com', '+.facebook.com', '+.youtube.com']
+    }
   } = dns || {}
   const [changed, setChanged] = useState(false)
   const [values, originSetValues] = useState({
+    enable,
     ipv6,
     useHosts,
     enhancedMode,
@@ -68,6 +61,11 @@ const DNS: React.FC = () => {
     nameserver,
     proxyServerNameserver,
     directNameserver,
+    fallback,
+    fallbackGeoip: (fallbackFilter?.geoip || true) as string | true | string[],
+    fallbackGeoipCode: fallbackFilter?.['geoip-code'] || 'CN',
+    fallbackIpcidr: fallbackFilter?.ipcidr || ['240.0.0.0/4', '0.0.0.0/32'],
+    fallbackDomain: fallbackFilter?.domain || ['+.google.com', '+.facebook.com', '+.youtube.com'],
     useNameserverPolicy,
     nameserverPolicy: Object.entries(nameserverPolicy || {}).map(([domain, value]) => ({
       domain,
@@ -76,14 +74,11 @@ const DNS: React.FC = () => {
     hosts: Object.entries(hosts || {}).map(([domain, value]) => ({ domain, value }))
   })
 
-  // -------- 工具函数 --------
-  // 更新配置值
   const setValues = (v: typeof values): void => {
     originSetValues(v)
     setChanged(true)
   }
 
-  // 处理列表类型配置项的变化
   const handleListChange = (type: string, value: string, index: number): void => {
     const list = [...values[type]]
     if (value.trim()) {
@@ -98,7 +93,6 @@ const DNS: React.FC = () => {
     setValues({ ...values, [type]: list })
   }
 
-  // 渲染列表输入框
   const renderListInputs = (type: string, placeholder: string): ReactNode => {
     const currentItems = values[type]
     const showNewLine = currentItems.every((item: string) => item.trim() !== '')
@@ -127,7 +121,6 @@ const DNS: React.FC = () => {
     ))
   }
 
-  // 处理子键配置项的变化
   const handleSubkeyChange = (type: string, domain: string, value: string, index: number): void => {
     const list = [...values[type]]
     const processedValue = value.includes(',')
@@ -138,8 +131,6 @@ const DNS: React.FC = () => {
     setValues({ ...values, [type]: list })
   }
 
-  // -------- 事件处理函数 --------
-  // 保存DNS配置
   const onSave = async (patch: Partial<IMihomoConfig>): Promise<void> => {
     await patchAppConfig({
       nameserverPolicy: Object.fromEntries(
@@ -150,13 +141,15 @@ const DNS: React.FC = () => {
     try {
       setChanged(false)
       await patchControledMihomoConfig(patch)
-      await restartCore()
+      if (controlDns) {
+        await patchMihomoConfig(patch)
+        await restartCore()
+      }
     } catch (e) {
-      alert(e)
+      showErrorSync(e, t('common.error.dnsConfigSaveFailed'))
     }
   }
 
-  // ======================== UI 渲染 ========================
   return (
     <BasePage
       title={t('dns.title')}
@@ -168,6 +161,7 @@ const DNS: React.FC = () => {
             color="primary"
             onPress={() => {
               const dnsConfig = {
+                enable: values.enable,
                 ipv6: values.ipv6,
                 'fake-ip-range': values.fakeIPRange,
                 'fake-ip-filter': values.fakeIPFilter,
@@ -179,8 +173,13 @@ const DNS: React.FC = () => {
                 nameserver: values.nameserver,
                 'proxy-server-nameserver': values.proxyServerNameserver,
                 'direct-nameserver': values.directNameserver,
-                fallback: undefined,
-                'fallback-filter': undefined
+                fallback: values.fallback,
+                'fallback-filter': {
+                  ...(values.fallbackGeoip ? { geoip: values.fallbackGeoip } : {}),
+                  'geoip-code': values.fallbackGeoipCode,
+                  ipcidr: values.fallbackIpcidr,
+                  domain: values.fallbackDomain
+                }
               }
               if (values.useNameserverPolicy) {
                 dnsConfig['nameserver-policy'] = Object.fromEntries(
@@ -196,12 +195,21 @@ const DNS: React.FC = () => {
               onSave(result)
             }}
           >
-            {t('common.save')}
+            {controlDns ? t('common.save') : t('dns.saveOnly')}
           </Button>
         )
       }
     >
       <SettingCard>
+        <SettingItem title={t('dns.enable')} divider>
+          <Switch
+            size="sm"
+            isSelected={values.enable}
+            onValueChange={(v) => {
+              setValues({ ...values, enable: v })
+            }}
+          />
+        </SettingItem>
         <SettingItem title={t('dns.enhancedMode.title')} divider>
           <Tabs
             size="sm"
@@ -254,22 +262,22 @@ const DNS: React.FC = () => {
         </SettingItem>
 
         <div className="flex flex-col items-stretch">
-          <h3>{t('dns.defaultNameserver')}</h3>
+          <h3>{t('dns.defaultNameserver')} (default-nameserver)</h3>
           {renderListInputs('defaultNameserver', t('dns.defaultNameserverPlaceholder'))}
         </div>
         <Divider className="my-2" />
         <div className="flex flex-col items-stretch">
-          <h3>{t('dns.proxyServerNameserver')}</h3>
+          <h3>{t('dns.proxyServerNameserver')} (proxy-server-nameserver)</h3>
           {renderListInputs('proxyServerNameserver', t('dns.proxyServerNameserverPlaceholder'))}
         </div>
         <Divider className="my-2" />
         <div className="flex flex-col items-stretch">
-          <h3>{t('dns.nameserver')}</h3>
+          <h3>{t('dns.nameserver')} (nameserver)</h3>
           {renderListInputs('nameserver', t('dns.nameserverPlaceholder'))}
         </div>
         <Divider className="my-2" />
         <div className="flex flex-col items-stretch">
-          <h3>{t('dns.directNameserver')}</h3>
+          <h3>{t('dns.directNameserver')} (direct-nameserver)</h3>
           {renderListInputs('directNameserver', t('dns.directNameserverPlaceholder'))}
         </div>
         <Divider className="my-2" />
@@ -289,7 +297,7 @@ const DNS: React.FC = () => {
               {[...values.nameserverPolicy, { domain: '', value: '' }].map(
                 ({ domain, value }, index) => (
                   <div key={index} className="flex mb-2">
-                    <div className="flex-[4]">
+                    <div className="flex-4">
                       <Input
                         size="sm"
                         fullWidth
@@ -306,7 +314,7 @@ const DNS: React.FC = () => {
                       />
                     </div>
                     <span className="mx-2">:</span>
-                    <div className="flex-[6] flex">
+                    <div className="flex-6 flex">
                       <Input
                         size="sm"
                         fullWidth
@@ -357,7 +365,7 @@ const DNS: React.FC = () => {
             <h3 className="mb-2">{t('dns.customHosts.list')}</h3>
             {[...values.hosts, { domain: '', value: '' }].map(({ domain, value }, index) => (
               <div key={index} className="flex mb-2">
-                <div className="flex-[4]">
+                <div className="flex-4">
                   <Input
                     size="sm"
                     fullWidth
@@ -374,7 +382,7 @@ const DNS: React.FC = () => {
                   />
                 </div>
                 <span className="mx-2">:</span>
-                <div className="flex-[6] flex">
+                <div className="flex-6 flex">
                   <Input
                     size="sm"
                     fullWidth
@@ -398,6 +406,42 @@ const DNS: React.FC = () => {
             ))}
           </div>
         )}
+        <Divider className="my-2" />
+        <div className="flex flex-col items-stretch">
+          <h3>{t('dns.fallback')}</h3>
+          {renderListInputs('fallback', t('dns.fallbackPlaceholder'))}
+        </div>
+      </SettingCard>
+      <SettingCard title={t('dns.fallbackFilter.title')}>
+        <SettingItem title={t('dns.fallbackFilter.geoip')} divider>
+          <Switch
+            size="sm"
+            isSelected={!!values.fallbackGeoip}
+            onValueChange={(v) => {
+              setValues({ ...values, fallbackGeoip: v as string | true | string[] })
+            }}
+          />
+        </SettingItem>
+        <SettingItem title={t('dns.fallbackFilter.geoipCode')} divider>
+          <Input
+            size="sm"
+            className="w-[100px]"
+            value={typeof values.fallbackGeoipCode === 'string' ? values.fallbackGeoipCode : ''}
+            placeholder="CN"
+            onValueChange={(v) => {
+              setValues({ ...values, fallbackGeoipCode: v })
+            }}
+          />
+        </SettingItem>
+        <div className="flex flex-col items-stretch">
+          <h3>{t('dns.fallbackFilter.ipcidr')}</h3>
+          {renderListInputs('fallbackIpcidr', t('dns.fallbackFilter.ipcidrPlaceholder'))}
+        </div>
+        <Divider className="my-2" />
+        <div className="flex flex-col items-stretch">
+          <h3>{t('dns.fallbackFilter.domain')}</h3>
+          {renderListInputs('fallbackDomain', t('dns.fallbackFilter.domainPlaceholder'))}
+        </div>
       </SettingCard>
     </BasePage>
   )

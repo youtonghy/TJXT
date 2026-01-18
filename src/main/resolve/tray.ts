@@ -1,3 +1,5 @@
+import { app, clipboard, ipcMain, Menu, nativeImage, shell, Tray } from 'electron'
+import { t } from 'i18next'
 import {
   changeCurrentProfile,
   getAppConfig,
@@ -7,29 +9,50 @@ import {
   patchControledMihomoConfig
 } from '../config'
 import icoIcon from '../../../resources/icon.ico?asset'
+import icoIconBlue from '../../../resources/icon_blue.ico?asset'
+import icoIconRed from '../../../resources/icon_red.ico?asset'
+import icoIconGreen from '../../../resources/icon_green.ico?asset'
 import pngIcon from '../../../resources/icon.png?asset'
+import pngIconBlue from '../../../resources/icon_blue.png?asset'
+import pngIconRed from '../../../resources/icon_red.png?asset'
+import pngIconGreen from '../../../resources/icon_green.png?asset'
 import templateIcon from '../../../resources/iconTemplate.png?asset'
 import {
   mihomoChangeProxy,
   mihomoCloseAllConnections,
   mihomoGroups,
-  patchMihomoConfig
+  patchMihomoConfig,
+  getTrayIconStatus,
+  calculateTrayIconStatus
 } from '../core/mihomoApi'
-import { mainWindow, showMainWindow, triggerMainWindow } from '..'
-import { app, clipboard, ipcMain, Menu, nativeImage, shell, Tray } from 'electron'
+import { mainWindow, showMainWindow, triggerMainWindow } from '../window'
 import { dataDir, logDir, mihomoCoreDir, mihomoWorkDir } from '../utils/dirs'
 import { triggerSysProxy } from '../sys/sysproxy'
-import { quitWithoutCore, restartCore } from '../core/manager'
+import {
+  quitWithoutCore,
+  restartCore,
+  checkMihomoCorePermissions,
+  requestTunPermissions,
+  restartAsAdmin
+} from '../core/manager'
+import { trayLogger } from '../utils/logger'
 import { floatingWindow, triggerFloatingWindow } from './floatingWindow'
-import { t } from 'i18next'
 
 export let tray: Tray | null = null
+// macOS 流量显示状态，避免异步读取配置导致的时序问题
+let macTrafficIconEnabled = false
 
 export const buildContextMenu = async (): Promise<Menu> => {
   // 添加调试日志
-  console.log('Current translation for tray.showWindow:', t('tray.showWindow'))
-  console.log('Current translation for tray.hideFloatingWindow:', t('tray.hideFloatingWindow'))
-  console.log('Current translation for tray.showFloatingWindow:', t('tray.showFloatingWindow'))
+  await trayLogger.debug('Current translation for tray.showWindow', t('tray.showWindow'))
+  await trayLogger.debug(
+    'Current translation for tray.hideFloatingWindow',
+    t('tray.hideFloatingWindow')
+  )
+  await trayLogger.debug(
+    'Current translation for tray.showFloatingWindow',
+    t('tray.showFloatingWindow')
+  )
 
   const { mode, tun } = await getControledMihomoConfig()
   const {
@@ -37,6 +60,8 @@ export const buildContextMenu = async (): Promise<Menu> => {
     envType = process.platform === 'win32' ? ['powershell'] : ['bash'],
     autoCloseConnection,
     proxyInTray = true,
+    showCurrentProxyInTray = false,
+    trayProxyGroupStyle = 'default',
     triggerSysProxyShortcut = '',
     showFloatingWindowShortcut = '',
     showWindowShortcut = '',
@@ -51,11 +76,13 @@ export const buildContextMenu = async (): Promise<Menu> => {
   if (proxyInTray && process.platform !== 'linux') {
     try {
       const groups = await mihomoGroups()
-      groupsMenu = groups.map((group) => {
+      const groupItems: Electron.MenuItemConstructorOptions[] = groups.map((group) => {
+        const groupLabel = showCurrentProxyInTray ? `${group.name} | ${group.now}` : group.name
+
         return {
           id: group.name,
-          label: group.name,
-          type: 'submenu',
+          label: groupLabel,
+          type: 'submenu' as const,
           submenu: group.all.map((proxy) => {
             const delay = proxy.history.length ? proxy.history[proxy.history.length - 1].delay : -1
             let displayDelay = `(${delay}ms)`
@@ -68,7 +95,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
             return {
               id: proxy.name,
               label: `${proxy.name}   ${displayDelay}`,
-              type: 'radio',
+              type: 'radio' as const,
               checked: proxy.name === group.now,
               click: async (): Promise<void> => {
                 await mihomoChangeProxy(group.name, proxy.name)
@@ -80,8 +107,22 @@ export const buildContextMenu = async (): Promise<Menu> => {
           })
         }
       })
-      groupsMenu.unshift({ type: 'separator' })
-    } catch (e) {
+
+      if (trayProxyGroupStyle === 'submenu') {
+        groupsMenu = [
+          { type: 'separator' },
+          {
+            id: 'proxy-groups',
+            label: t('tray.proxyGroups'),
+            type: 'submenu',
+            submenu: groupItems
+          }
+        ]
+      } else {
+        groupsMenu = groupItems
+        groupsMenu.unshift({ type: 'separator' })
+      }
+    } catch {
       // ignore
       // 避免出错时无法创建托盘菜单
     }
@@ -101,7 +142,9 @@ export const buildContextMenu = async (): Promise<Menu> => {
     {
       id: 'show-floating',
       accelerator: showFloatingWindowShortcut,
-      label: floatingWindow?.isVisible() ? t('tray.hideFloatingWindow') : t('tray.showFloatingWindow'),
+      label: floatingWindow?.isVisible()
+        ? t('tray.hideFloatingWindow')
+        : t('tray.showFloatingWindow'),
       type: 'normal',
       click: async (): Promise<void> => {
         await triggerFloatingWindow()
@@ -119,6 +162,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         mainWindow?.webContents.send('groupsUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       }
     },
     {
@@ -133,6 +177,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         mainWindow?.webContents.send('groupsUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       }
     },
     {
@@ -147,6 +192,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         mainWindow?.webContents.send('groupsUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       }
     },
     { type: 'separator' },
@@ -162,10 +208,11 @@ export const buildContextMenu = async (): Promise<Menu> => {
           await patchAppConfig({ sysProxy: { enable } })
           mainWindow?.webContents.send('appConfigUpdated')
           floatingWindow?.webContents.send('appConfigUpdated')
-        } catch (e) {
+        } catch {
           // ignore
         } finally {
           ipcMain.emit('updateTrayMenu')
+          await updateTrayIcon()
         }
       }
     },
@@ -178,6 +225,39 @@ export const buildContextMenu = async (): Promise<Menu> => {
         const enable = item.checked
         try {
           if (enable) {
+            // 检查权限
+            try {
+              const hasPermissions = await checkMihomoCorePermissions()
+
+              if (!hasPermissions) {
+                if (process.platform === 'win32') {
+                  try {
+                    await restartAsAdmin()
+                    return
+                  } catch (error) {
+                    await trayLogger.error('Failed to restart as admin from tray', error)
+                    item.checked = false
+                    ipcMain.emit('updateTrayMenu')
+                    return
+                  }
+                } else {
+                  try {
+                    await requestTunPermissions()
+                  } catch (error) {
+                    await trayLogger.error('Failed to grant TUN permissions from tray', error)
+                    item.checked = false
+                    ipcMain.emit('updateTrayMenu')
+                    return
+                  }
+                }
+              }
+            } catch (error) {
+              await trayLogger.warn('Permission check failed in tray', error)
+              item.checked = false
+              ipcMain.emit('updateTrayMenu')
+              return
+            }
+
             await patchControledMihomoConfig({ tun: { enable }, dns: { enable: true } })
           } else {
             await patchControledMihomoConfig({ tun: { enable } })
@@ -189,6 +269,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
           // ignore
         } finally {
           ipcMain.emit('updateTrayMenu')
+          await updateTrayIcon()
         }
       }
     },
@@ -207,6 +288,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
             await changeCurrentProfile(item.id)
             mainWindow?.webContents.send('profileConfigUpdated')
             ipcMain.emit('updateTrayMenu')
+            await updateTrayIcon()
           }
         }
       })
@@ -291,7 +373,7 @@ export const buildContextMenu = async (): Promise<Menu> => {
 }
 
 export async function createTray(): Promise<void> {
-  const { useDockIcon = true } = await getAppConfig()
+  const { useDockIcon = true, swapTrayClick = false } = await getAppConfig()
   if (process.platform === 'linux') {
     tray = new Tray(pngIcon)
     const menu = await buildContextMenu()
@@ -305,36 +387,65 @@ export async function createTray(): Promise<void> {
   if (process.platform === 'win32') {
     tray = new Tray(icoIcon)
   }
-  tray?.setToolTip('TJXT')
+  tray?.setToolTip('Clash Party')
   tray?.setIgnoreDoubleClickEvents(true)
+
+  await updateTrayIcon()
+
   if (process.platform === 'darwin') {
     if (!useDockIcon) {
       hideDockIcon()
     }
-    ipcMain.on('trayIconUpdate', async (_, png: string) => {
+    // 移除旧监听器防止累积
+    ipcMain.removeAllListeners('trayIconUpdate')
+    ipcMain.on('trayIconUpdate', async (_, png: string, enabled: boolean) => {
+      macTrafficIconEnabled = enabled
       const image = nativeImage.createFromDataURL(png).resize({ height: 16 })
       image.setTemplateImage(true)
       tray?.setImage(image)
     })
-    tray?.addListener('right-click', async () => {
-      triggerMainWindow()
-    })
+    // macOS 默认行为：左键显示窗口，右键显示菜单
     tray?.addListener('click', async () => {
-      await updateTrayMenu()
+      if (swapTrayClick) {
+        await updateTrayMenu()
+      } else {
+        triggerMainWindow()
+      }
+    })
+    tray?.addListener('right-click', async () => {
+      if (swapTrayClick) {
+        triggerMainWindow()
+      } else {
+        await updateTrayMenu()
+      }
     })
   }
   if (process.platform === 'win32') {
-    tray?.addListener('click', () => {
-      triggerMainWindow()
+    tray?.addListener('click', async () => {
+      if (swapTrayClick) {
+        await updateTrayMenu()
+      } else {
+        triggerMainWindow()
+      }
     })
     tray?.addListener('right-click', async () => {
-      await updateTrayMenu()
+      if (swapTrayClick) {
+        triggerMainWindow()
+      } else {
+        await updateTrayMenu()
+      }
     })
   }
   if (process.platform === 'linux') {
-    tray?.addListener('click', () => {
-      triggerMainWindow()
+    tray?.addListener('click', async () => {
+      if (swapTrayClick) {
+        await updateTrayMenu()
+      } else {
+        triggerMainWindow()
+      }
     })
+    // 移除旧监听器防止累积
+    ipcMain.removeAllListeners('updateTrayMenu')
     ipcMain.on('updateTrayMenu', async () => {
       await updateTrayMenu()
     })
@@ -389,13 +500,82 @@ export async function closeTrayIcon(): Promise<void> {
 }
 
 export async function showDockIcon(): Promise<void> {
-  if (process.platform === 'darwin' && !app.dock.isVisible()) {
+  if (process.platform === 'darwin' && app.dock && !app.dock.isVisible()) {
     await app.dock.show()
   }
 }
 
 export async function hideDockIcon(): Promise<void> {
-  if (process.platform === 'darwin' && app.dock.isVisible()) {
+  if (process.platform === 'darwin' && app.dock && app.dock.isVisible()) {
     app.dock.hide()
+  }
+}
+
+const getIconPaths = () => {
+  if (process.platform === 'win32') {
+    return {
+      white: icoIcon,
+      blue: icoIconBlue,
+      green: icoIconGreen,
+      red: icoIconRed
+    }
+  } else {
+    return {
+      white: pngIcon,
+      blue: pngIconBlue,
+      green: pngIconGreen,
+      red: pngIconRed
+    }
+  }
+}
+
+export function updateTrayIconImmediate(sysProxyEnabled: boolean, tunEnabled: boolean): void {
+  if (!tray) return
+  // macOS 流量显示开启时，由 trayIconUpdate 负责图标更新
+  if (process.platform === 'darwin' && macTrafficIconEnabled) return
+
+  const status = calculateTrayIconStatus(sysProxyEnabled, tunEnabled)
+  const iconPaths = getIconPaths()
+
+  getAppConfig().then(({ disableTrayIconColor = false }) => {
+    if (!tray) return
+    if (process.platform === 'darwin' && macTrafficIconEnabled) return
+    const iconPath = disableTrayIconColor ? iconPaths.white : iconPaths[status]
+    try {
+      if (process.platform === 'darwin') {
+        const icon = nativeImage.createFromPath(iconPath).resize({ height: 16 })
+        tray.setImage(icon)
+      } else if (process.platform === 'win32') {
+        tray.setImage(iconPath)
+      } else if (process.platform === 'linux') {
+        tray.setImage(iconPath)
+      }
+    } catch {
+      // Failed to update tray icon
+    }
+  })
+}
+
+export async function updateTrayIcon(): Promise<void> {
+  if (!tray) return
+  // macOS 流量显示开启时，由 trayIconUpdate 负责图标更新
+  if (process.platform === 'darwin' && macTrafficIconEnabled) return
+
+  const { disableTrayIconColor = false } = await getAppConfig()
+  const status = await getTrayIconStatus()
+  const iconPaths = getIconPaths()
+  const iconPath = disableTrayIconColor ? iconPaths.white : iconPaths[status]
+
+  try {
+    if (process.platform === 'darwin') {
+      const icon = nativeImage.createFromPath(iconPath).resize({ height: 16 })
+      tray.setImage(icon)
+    } else if (process.platform === 'win32') {
+      tray.setImage(iconPath)
+    } else if (process.platform === 'linux') {
+      tray.setImage(iconPath)
+    }
+  } catch {
+    // Failed to update tray icon
   }
 }

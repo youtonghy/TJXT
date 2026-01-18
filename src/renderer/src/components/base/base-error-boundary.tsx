@@ -3,14 +3,12 @@ import { ReactNode } from 'react'
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 import { useTranslation } from 'react-i18next'
 
-const ErrorFallback = ({ error }: FallbackProps) => {
+const ErrorFallback = ({ error }: FallbackProps): React.ReactElement => {
   const { t } = useTranslation()
-  
+
   return (
     <div className="p-4">
-      <h2 className="my-2 text-lg font-bold">
-        {t('common.error.appCrash')}
-      </h2>
+      <h2 className="my-2 text-lg font-bold">{t('common.error.appCrash')}</h2>
 
       <Button
         size="sm"
@@ -55,7 +53,7 @@ interface Props {
   children?: ReactNode
 }
 
-const BaseErrorBoundary = (props: Props) => {
+const BaseErrorBoundary = (props: Props): React.ReactElement => {
   return <ErrorBoundary FallbackComponent={ErrorFallback}>{props.children}</ErrorBoundary>
 }
 

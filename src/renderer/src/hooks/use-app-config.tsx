@@ -1,6 +1,14 @@
-import React, { createContext, useContext, ReactNode } from 'react'
-import useSWR from 'swr'
+import React, { ReactNode, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import { showError } from '@renderer/utils/error-display'
 import { getAppConfig, patchAppConfig as patch } from '@renderer/utils/ipc'
+import { createConfigContext } from './create-config-context'
+
+const { Provider, useConfig } = createConfigContext<IAppConfig>({
+  swrKey: 'getAppConfig',
+  fetcher: getAppConfig,
+  ipcEvent: 'appConfigUpdated'
+})
 
 interface AppConfigContextType {
   appConfig: IAppConfig | undefined
@@ -8,40 +16,45 @@ interface AppConfigContextType {
   patchAppConfig: (value: Partial<IAppConfig>) => Promise<void>
 }
 
-const AppConfigContext = createContext<AppConfigContextType | undefined>(undefined)
-
 export const AppConfigProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { data: appConfig, mutate: mutateAppConfig } = useSWR('getConfig', () => getAppConfig())
+  return (
+    <Provider>
+      <AppConfigContextWrapper>{children}</AppConfigContextWrapper>
+    </Provider>
+  )
+}
 
-  const patchAppConfig = async (value: Partial<IAppConfig>): Promise<void> => {
-    try {
-      await patch(value)
-    } catch (e) {
-      alert(e)
-    } finally {
-      mutateAppConfig()
-    }
-  }
+const AppConfigContextWrapper: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { config, mutate } = useConfig()
+  const { t } = useTranslation()
 
-  React.useEffect(() => {
-    window.electron.ipcRenderer.on('appConfigUpdated', () => {
-      mutateAppConfig()
-    })
-    return (): void => {
-      window.electron.ipcRenderer.removeAllListeners('appConfigUpdated')
-    }
-  }, [])
+  const patchAppConfig = useCallback(
+    async (value: Partial<IAppConfig>): Promise<void> => {
+      try {
+        await patch(value)
+      } catch (e) {
+        await showError(e, t('common.error.updateAppConfigFailed'))
+      } finally {
+        mutate()
+      }
+    },
+    [mutate, t]
+  )
 
   return (
-    <AppConfigContext.Provider value={{ appConfig, mutateAppConfig, patchAppConfig }}>
+    <AppConfigContext.Provider
+      value={{ appConfig: config, mutateAppConfig: mutate, patchAppConfig }}
+    >
       {children}
     </AppConfigContext.Provider>
   )
 }
 
+const AppConfigContext = React.createContext<AppConfigContextType | undefined>(undefined)
+
 export const useAppConfig = (): AppConfigContextType => {
-  const context = useContext(AppConfigContext)
-  if (context === undefined) {
+  const context = React.useContext(AppConfigContext)
+  if (!context) {
     throw new Error('useAppConfig must be used within an AppConfigProvider')
   }
   return context

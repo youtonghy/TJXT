@@ -1,30 +1,31 @@
 import React, { useState } from 'react'
-import SettingCard from '../base/base-setting-card'
-import SettingItem from '../base/base-setting-item'
+import { toast } from '@renderer/components/base/toast'
 import { Button, Input, Select, SelectItem, Switch, Tooltip } from '@heroui/react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import debounce from '@renderer/utils/debounce'
-import { getGistUrl, patchControledMihomoConfig, restartCore } from '@renderer/utils/ipc'
+import { getGistUrl, restartCore } from '@renderer/utils/ipc'
 import { MdDeleteForever } from 'react-icons/md'
 import { BiCopy } from 'react-icons/bi'
 import { IoIosHelpCircle } from 'react-icons/io'
 import { platform, version } from '@renderer/utils/init'
 import { useTranslation } from 'react-i18next'
+import SettingItem from '../base/base-setting-item'
+import SettingCard from '../base/base-setting-card'
 
 const MihomoConfig: React.FC = () => {
   const { t } = useTranslation()
   const { appConfig, patchAppConfig } = useAppConfig()
   const {
     diffWorkDir = false,
-    controlDns = true,
-    controlSniff = true,
     delayTestConcurrency,
     delayTestTimeout,
     githubToken = '',
     autoCloseConnection = true,
+    testProfileOnStart = true,
     pauseSSID = [],
     delayTestUrl,
     userAgent,
+    subscriptionTimeout = 30000,
     mihomoCpuPriority = 'PRIORITY_NORMAL',
     proxyCols = 'auto'
   } = appConfig || {}
@@ -50,6 +51,27 @@ const MihomoConfig: React.FC = () => {
             setUaDebounce(v)
           }}
         ></Input>
+      </SettingItem>
+      <SettingItem title={t('settings.subscriptionTimeout')} divider>
+        <div className="flex items-center gap-2">
+          <Input
+            size="sm"
+            className="w-[100px]"
+            type="number"
+            value={(subscriptionTimeout / 1000)?.toString()}
+            onValueChange={async (v: string) => {
+              const num = parseInt(v)
+              await patchAppConfig({ subscriptionTimeout: num * 1000 })
+            }}
+            onBlur={async (e) => {
+              let num = parseInt(e.target.value)
+              if (isNaN(num)) num = 30
+              if (num < 30) num = 30
+              await patchAppConfig({ subscriptionTimeout: num * 1000 })
+            }}
+          />
+          <span className="text-default-500">{t('common.seconds')}</span>
+        </div>
       </SettingItem>
       <SettingItem title={t('mihomo.delayTest.url')} divider>
         <Input
@@ -99,10 +121,10 @@ const MihomoConfig: React.FC = () => {
               try {
                 const url = await getGistUrl()
                 if (url !== '') {
-                  await navigator.clipboard.writeText(`${url}/raw/mihomo-party.yaml`)
+                  await navigator.clipboard.writeText(`${url}/raw/clash-party.yaml`)
                 }
               } catch (e) {
-                alert(e)
+                toast.error(String(e))
               }
             }}
           >
@@ -156,15 +178,19 @@ const MihomoConfig: React.FC = () => {
                 })
                 await restartCore()
               } catch (e) {
-                alert(e)
+                toast.error(String(e))
               }
             }}
           >
             <SelectItem key="PRIORITY_HIGHEST">{t('mihomo.cpuPriority.realtime')}</SelectItem>
             <SelectItem key="PRIORITY_HIGH">{t('mihomo.cpuPriority.high')}</SelectItem>
-            <SelectItem key="PRIORITY_ABOVE_NORMAL">{t('mihomo.cpuPriority.aboveNormal')}</SelectItem>
+            <SelectItem key="PRIORITY_ABOVE_NORMAL">
+              {t('mihomo.cpuPriority.aboveNormal')}
+            </SelectItem>
             <SelectItem key="PRIORITY_NORMAL">{t('mihomo.cpuPriority.normal')}</SelectItem>
-            <SelectItem key="PRIORITY_BELOW_NORMAL">{t('mihomo.cpuPriority.belowNormal')}</SelectItem>
+            <SelectItem key="PRIORITY_BELOW_NORMAL">
+              {t('mihomo.cpuPriority.belowNormal')}
+            </SelectItem>
             <SelectItem key="PRIORITY_LOW">{t('mihomo.cpuPriority.low')}</SelectItem>
           </Select>
         </SettingItem>
@@ -188,47 +214,37 @@ const MihomoConfig: React.FC = () => {
               await patchAppConfig({ diffWorkDir: v })
               await restartCore()
             } catch (e) {
-              alert(e)
+              toast.error(String(e))
             }
           }}
         />
       </SettingItem>
-      <SettingItem title={t('mihomo.controlDns')} divider>
-        <Switch
-          size="sm"
-          isSelected={controlDns}
-          onValueChange={async (v) => {
-            try {
-              await patchAppConfig({ controlDns: v })
-              await patchControledMihomoConfig({})
-              await restartCore()
-            } catch (e) {
-              alert(e)
-            }
-          }}
-        />
-      </SettingItem>
-      <SettingItem title={t('mihomo.controlSniff')} divider>
-        <Switch
-          size="sm"
-          isSelected={controlSniff}
-          onValueChange={async (v) => {
-            try {
-              await patchAppConfig({ controlSniff: v })
-              await patchControledMihomoConfig({})
-              await restartCore()
-            } catch (e) {
-              alert(e)
-            }
-          }}
-        />
-      </SettingItem>
+
       <SettingItem title={t('mihomo.autoCloseConnection')} divider>
         <Switch
           size="sm"
           isSelected={autoCloseConnection}
           onValueChange={(v) => {
             patchAppConfig({ autoCloseConnection: v })
+          }}
+        />
+      </SettingItem>
+      <SettingItem
+        title={t('mihomo.testProfileOnStart')}
+        actions={
+          <Tooltip content={t('mihomo.testProfileOnStartTooltip')}>
+            <Button isIconOnly size="sm" variant="light">
+              <IoIosHelpCircle className="text-lg" />
+            </Button>
+          </Tooltip>
+        }
+        divider
+      >
+        <Switch
+          size="sm"
+          isSelected={testProfileOnStart}
+          onValueChange={(v) => {
+            patchAppConfig({ testProfileOnStart: v })
           }}
         />
       </SettingItem>

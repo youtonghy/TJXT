@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 页面：商店
  * Page: Store
  */
@@ -9,7 +9,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // UI 组件
-import { Button, Card, CardBody, CardFooter, CardHeader, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Spinner } from '@heroui/react'
+import {
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  CardHeader,
+  Divider,
+  Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Select,
+  SelectItem,
+  Spinner
+} from '@heroui/react'
 
 // 自定义组件
 import BasePage from '@renderer/components/base/base-page'
@@ -162,7 +178,11 @@ const Store: React.FC = () => {
   }, [])
 
   // Drag-to-scroll state
-  const dragRef = useRef<{ startX: number; startLeft: number; dragging: boolean }>({ startX: 0, startLeft: 0, dragging: false })
+  const dragRef = useRef<{ startX: number; startLeft: number; dragging: boolean }>({
+    startX: 0,
+    startLeft: 0,
+    dragging: false
+  })
   const [dragging, setDragging] = useState(false)
   const onDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
@@ -193,7 +213,10 @@ const Store: React.FC = () => {
       const keys = ['message', 'msg', 'error', 'detail', 'info']
       for (const k of keys) {
         const v = (obj as any)[k]
-        if (typeof v === 'string' && v.trim()) { msg = v.trim(); break }
+        if (typeof v === 'string' && v.trim()) {
+          msg = v.trim()
+          break
+        }
       }
       if (!msg && Array.isArray((obj as any).errors) && (obj as any).errors.length) {
         const first = (obj as any).errors[0]
@@ -206,7 +229,12 @@ const Store: React.FC = () => {
     setToasts((prev) => [...prev, { id, message: msg }])
     const timer = window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-      const m = toastTimersRef.current; const tid = m.get(id); if (tid) { window.clearTimeout(tid); m.delete(id) }
+      const m = toastTimersRef.current
+      const tid = m.get(id)
+      if (tid) {
+        window.clearTimeout(tid)
+        m.delete(id)
+      }
     }, 3000)
     toastTimersRef.current.set(id, timer)
   }, [])
@@ -220,7 +248,7 @@ const Store: React.FC = () => {
         'POST',
         { trade_no: tradeNo },
         {
-          'Authorization': auth.getToken() || '',
+          Authorization: auth.getToken() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -250,7 +278,7 @@ const Store: React.FC = () => {
         'POST',
         { giftcard: code },
         {
-          'Authorization': auth.getToken() || '',
+          Authorization: auth.getToken() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -262,7 +290,7 @@ const Store: React.FC = () => {
         try {
           const obj = JSON.parse(text)
           const msg = (obj?.message || obj?.msg || obj?.error || obj?.detail || '') as string
-          setRedeemMsg((msg && msg.trim()) || (text || '兑换失败'))
+          setRedeemMsg((msg && msg.trim()) || text || '兑换失败')
         } catch {
           setRedeemMsg(text || '兑换失败')
         }
@@ -288,11 +316,11 @@ const Store: React.FC = () => {
     }
   }
 
-
-
   useEffect(() => {
     if (!auth.isLoggedIn()) {
-      try { new Notification(t('store.loginRequired') || '请先登录') } catch {}
+      try {
+        new Notification(t('store.loginRequired') || '请先登录')
+      } catch {}
       navigate('/user-center', { replace: true })
       return
     }
@@ -300,16 +328,10 @@ const Store: React.FC = () => {
       setLoading(true)
       setError(null)
       try {
-        const res = await callV3Gateway(
-          getBaseUrl(),
-          'user/plan/fetch',
-          'GET',
-          undefined,
-          {
-            'Authorization': auth.getToken() || '',
-            'User-Agent': API_USER_AGENT
-          }
-        )
+        const res = await callV3Gateway(getBaseUrl(), 'user/plan/fetch', 'GET', undefined, {
+          Authorization: auth.getToken() || '',
+          'User-Agent': API_USER_AGENT
+        })
         if (res.status === 401) {
           navigate('/user-center', { replace: true })
           return
@@ -353,7 +375,7 @@ const Store: React.FC = () => {
         'POST',
         { code: coupon.trim() },
         {
-          'Authorization': auth.getToken() || '',
+          Authorization: auth.getToken() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -394,19 +416,16 @@ const Store: React.FC = () => {
       }
       if (coupon.trim()) params.coupon = coupon.trim()
 
-      const res = await callV3Gateway(
-        getBaseUrl(),
-        'user/order/save',
-        'POST',
-        params,
-        {
-          'Authorization': auth.getToken() || '',
-          'User-Agent': API_USER_AGENT
-        }
-      )
+      const res = await callV3Gateway(getBaseUrl(), 'user/order/save', 'POST', params, {
+        Authorization: auth.getToken() || '',
+        'User-Agent': API_USER_AGENT
+      })
       if (!res.ok) {
         const txt = await res.text().catch(() => '')
-        if (res.status >= 500) { showErrorBanner(txt); return }
+        if (res.status >= 500) {
+          showErrorBanner(txt)
+          return
+        }
         throw new Error(txt || `HTTP ${res.status}`)
       }
       const data = await res.json().catch(() => ({}))
@@ -426,15 +445,21 @@ const Store: React.FC = () => {
   const loadPaymentData = async (tn: string): Promise<void> => {
     try {
       const headers = {
-        'Authorization': auth.getToken() || '',
+        Authorization: auth.getToken() || '',
         'User-Agent': API_USER_AGENT
       }
       const [detailRes, pmRes] = await Promise.all([
         callV3Gateway(getBaseUrl(), 'user/order/detail', 'GET', { trade_no: tn }, headers),
         callV3Gateway(getBaseUrl(), 'user/order/getPaymentMethod', 'GET', undefined, headers)
       ])
-      if (detailRes.status >= 500) { const text = await detailRes.text().catch(() => ''); showErrorBanner(text) }
-      if (pmRes.status >= 500) { const text = await pmRes.text().catch(() => ''); showErrorBanner(text) }
+      if (detailRes.status >= 500) {
+        const text = await detailRes.text().catch(() => '')
+        showErrorBanner(text)
+      }
+      if (pmRes.status >= 500) {
+        const text = await pmRes.text().catch(() => '')
+        showErrorBanner(text)
+      }
       const d = await detailRes.json().catch(() => ({}))
       const p = await pmRes.json().catch(() => ({}))
       if (d?.data) setOrder(d.data as OrderDetail)
@@ -450,16 +475,10 @@ const Store: React.FC = () => {
       const params: Record<string, unknown> = { trade_no: tradeNo }
       if (methodId != null) params.payment_id = methodId
 
-      const res = await callV3Gateway(
-        getBaseUrl(),
-        'user/order/checkout',
-        'POST',
-        params,
-        {
-          'Authorization': auth.getToken() || '',
-          'User-Agent': API_USER_AGENT
-        }
-      )
+      const res = await callV3Gateway(getBaseUrl(), 'user/order/checkout', 'POST', params, {
+        Authorization: auth.getToken() || '',
+        'User-Agent': API_USER_AGENT
+      })
       if (res.status >= 500) {
         const text500 = await res.text().catch(() => '')
         showErrorBanner(text500)
@@ -493,7 +512,15 @@ const Store: React.FC = () => {
 
   const renderPlanCard = (plan: Plan): React.ReactElement => {
     // Pick a primary price to display: month > year > onetime > others
-    const preferred: (keyof Plan)[] = ['month_price', 'year_price', 'onetime_price', 'quarter_price', 'half_year_price', 'two_year_price', 'three_year_price']
+    const preferred: (keyof Plan)[] = [
+      'month_price',
+      'year_price',
+      'onetime_price',
+      'quarter_price',
+      'half_year_price',
+      'two_year_price',
+      'three_year_price'
+    ]
     const key = preferred.find((k) => (plan[k] as number | null) != null)
     const priceText = formatPrice(key ? (plan[key] as number | null) : null, t)
     const features = htmlToFeatures(plan.content)
@@ -501,16 +528,19 @@ const Store: React.FC = () => {
     return (
       <Card key={plan.id} className="shrink-0 flex-none w-[230px] rounded-2xl shadow-medium">
         <CardHeader className="flex-col items-start gap-1">
-          <span className="text-sm font-semibold bg-gradient-to-r from-violet-500 to-orange-400 bg-clip-text text-transparent">{plan.name}</span>
+          <span className="text-sm font-semibold bg-gradient-to-r from-violet-500 to-orange-400 bg-clip-text text-transparent">
+            {plan.name}
+          </span>
           <div className="flex items-baseline gap-2">
             <span className="text-4xl font-extrabold">{priceText}</span>
-            {key && (
-              key === 'onetime_price' ? (
+            {key &&
+              (key === 'onetime_price' ? (
                 <span className="text-default-500 text-sm">{t('store.unit.onetime')}</span>
               ) : (
-                <span className="text-default-500 text-sm">/ {t(periodUnitKeyMap[key] || 'store.unit.month')}</span>
-              )
-            )}
+                <span className="text-default-500 text-sm">
+                  / {t(periodUnitKeyMap[key] || 'store.unit.month')}
+                </span>
+              ))}
           </div>
         </CardHeader>
         <CardBody className="pt-0">
@@ -568,7 +598,12 @@ const Store: React.FC = () => {
                     color="danger"
                     onPress={() => {
                       setToasts((prev) => prev.filter((t) => t.id !== toast.id))
-                      const m = toastTimersRef.current; const tid = m.get(toast.id); if (tid) { window.clearTimeout(tid); m.delete(toast.id) }
+                      const m = toastTimersRef.current
+                      const tid = m.get(toast.id)
+                      if (tid) {
+                        window.clearTimeout(tid)
+                        m.delete(toast.id)
+                      }
                     }}
                   >
                     ×
@@ -580,11 +615,11 @@ const Store: React.FC = () => {
         </div>
       )}
       {loading && (
-        <div className="flex justify-center items-center py-10"><Spinner /></div>
+        <div className="flex justify-center items-center py-10">
+          <Spinner />
+        </div>
       )}
-      {error && (
-        <div className="text-danger text-sm my-2">{error}</div>
-      )}
+      {error && <div className="text-danger text-sm my-2">{error}</div>}
       {!loading && !error && (
         <div
           className="relative"
@@ -600,9 +635,7 @@ const Store: React.FC = () => {
             onMouseLeave={onDragEnd}
             className={`overflow-x-auto px-10 py-4 ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none`}
           >
-            <div className="flex gap-6 justify-start">
-              {plans.map((p) => renderPlanCard(p))}
-            </div>
+            <div className="flex gap-6 justify-start">{plans.map((p) => renderPlanCard(p))}</div>
           </div>
           {hovering && canScrollLeft && (
             <Button
@@ -712,8 +745,15 @@ const Store: React.FC = () => {
                     </div>
                   </ModalBody>
                   <ModalFooter>
-                    <Button variant="light" onPress={onClose}>{t('common.cancel')}</Button>
-                    <Button color="primary" isDisabled={!selectedPeriod && periodOptions.length !== 1} isLoading={submitting} onPress={submitOrder}>
+                    <Button variant="light" onPress={onClose}>
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      color="primary"
+                      isDisabled={!selectedPeriod && periodOptions.length !== 1}
+                      isLoading={submitting}
+                      onPress={submitOrder}
+                    >
                       {t('store.createOrder')}
                     </Button>
                   </ModalFooter>
@@ -725,16 +765,39 @@ const Store: React.FC = () => {
                   <ModalHeader>{t('store.paymentTitle')}</ModalHeader>
                   <ModalBody>
                     <div className="flex flex-col gap-3">
-                      <div className="text-sm text-default-500">{t('store.orderNo')}: {order?.trade_no || tradeNo}</div>
-                      <div className="text-sm text-default-500">{t('store.orderCreatedAt')}: {order?.created_at ? dayjs.unix(order.created_at).format('DD/MM/YYYY') : '-'}</div>
+                      <div className="text-sm text-default-500">
+                        {t('store.orderNo')}: {order?.trade_no || tradeNo}
+                      </div>
+                      <div className="text-sm text-default-500">
+                        {t('store.orderCreatedAt')}:{' '}
+                        {order?.created_at
+                          ? dayjs.unix(order.created_at).format('DD/MM/YYYY')
+                          : '-'}
+                      </div>
                       <Divider />
                       <div>
-                        <div className="font-semibold">{order?.plan?.name || currentPlan?.name}</div>
-                        <div className="text-default-600 text-sm">{t('store.totalAmount')}: {formatPrice(order?.total_amount ?? (currentPlan && (currentPlan as any)[selectedPeriod as keyof Plan]) as number | null, t)}</div>
+                        <div className="font-semibold">
+                          {order?.plan?.name || currentPlan?.name}
+                        </div>
+                        <div className="text-default-600 text-sm">
+                          {t('store.totalAmount')}:{' '}
+                          {formatPrice(
+                            order?.total_amount ??
+                              ((currentPlan &&
+                                (currentPlan as any)[selectedPeriod as keyof Plan]) as
+                                | number
+                                | null),
+                            t
+                          )}
+                        </div>
                       </div>
-                      <Select label={t('store.paymentMethod')} selectedKeys={methodId != null ? [String(methodId)] : []} onChange={(e) => setMethodId(Number(e.target.value))}>
+                      <Select
+                        label={t('store.paymentMethod')}
+                        selectedKeys={methodId != null ? [String(methodId)] : []}
+                        onChange={(e) => setMethodId(Number(e.target.value))}
+                      >
                         {methods.map((m) => (
-                          <SelectItem key={String(m.id)} value={String(m.id)}>{m.name}</SelectItem>
+                          <SelectItem key={String(m.id)}>{m.name}</SelectItem>
                         ))}
                       </Select>
                     </div>
@@ -756,7 +819,9 @@ const Store: React.FC = () => {
                     >
                       {t('store.cancelOrder')}
                     </Button>
-                    <Button color="primary" isLoading={checkingOut} onPress={doCheckout}>{t('store.payNow')}</Button>
+                    <Button color="primary" isLoading={checkingOut} onPress={doCheckout}>
+                      {t('store.payNow')}
+                    </Button>
                   </ModalFooter>
                 </>
               )}
@@ -768,7 +833,15 @@ const Store: React.FC = () => {
                     <div className="text-default-600">{t('store.successHint')}</div>
                   </ModalBody>
                   <ModalFooter>
-                    <Button color="primary" onPress={() => { onClose(); navigate('/user-center') }}>{t('store.goUserCenter')}</Button>
+                    <Button
+                      color="primary"
+                      onPress={() => {
+                        onClose()
+                        navigate('/user-center')
+                      }}
+                    >
+                      {t('store.goUserCenter')}
+                    </Button>
                   </ModalFooter>
                 </>
               )}

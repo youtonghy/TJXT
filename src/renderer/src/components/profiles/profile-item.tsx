@@ -14,15 +14,15 @@ import {
 import { calcPercent, calcTraffic } from '@renderer/utils/calc'
 import { IoMdMore, IoMdRefresh } from 'react-icons/io'
 import dayjs from '@renderer/utils/dayjs'
-import React, { Key, useEffect, useMemo, useState } from 'react'
-import EditFileModal from './edit-file-modal'
-import EditInfoModal from './edit-info-modal'
+import React, { Key, useMemo, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { openFile } from '@renderer/utils/ipc'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import EditRulesModal from './edit-rules-modal'
+import EditInfoModal from './edit-info-modal'
+import EditFileModal from './edit-file-modal'
 
 interface Props {
   info: IProfileItem
@@ -43,7 +43,6 @@ interface MenuItem {
 }
 const ProfileItem: React.FC<Props> = (props) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const {
     info,
     addProfileItem,
@@ -59,9 +58,9 @@ const ProfileItem: React.FC<Props> = (props) => {
   const { appConfig, patchAppConfig } = useAppConfig()
   const { profileDisplayDate = 'expire' } = appConfig || {}
   const [updating, setUpdating] = useState(false)
-  const [selecting, setSelecting] = useState(false)
   const [openInfoEditor, setOpenInfoEditor] = useState(false)
   const [openFileEditor, setOpenFileEditor] = useState(false)
+  const [openRulesEditor, setOpenRulesEditor] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const {
     attributes,
@@ -74,54 +73,48 @@ const ProfileItem: React.FC<Props> = (props) => {
     id: info.id
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
-  const [disableSelect, setDisableSelect] = useState(false)
+  const [isActuallyDragging, setIsActuallyDragging] = useState(false)
+  const [clickStartPos, setClickStartPos] = useState<{ x: number; y: number } | null>(null)
 
   const menuItems: MenuItem[] = useMemo(() => {
-    // Check if this is the special user subscription
-    const isUserSubscription = info.id === 'user-subscription-meta'
-    const isEmptyUserSubscription = isUserSubscription && info.url === 'https://example.com/empty-subscription'
-    
-    const list: MenuItem[] = []
-
-    // Only add edit options if it's not an empty user subscription AND not user subscription
-    if (!isEmptyUserSubscription && !isUserSubscription) {
-      list.push(
-        {
-          key: 'edit-info',
-          label: t('profiles.editInfo.title'),
-          showDivider: false,
-          color: 'default',
-          className: ''
-        } as MenuItem,
-        {
-          key: 'edit-file',
-          label: t('profiles.editFile.title'),
-          showDivider: false,
-          color: 'default',
-          className: ''
-        } as MenuItem,
-        {
-          key: 'open-file',
-          label: t('profiles.openFile'),
-          showDivider: true,
-          color: 'default',
-          className: ''
-        } as MenuItem
-      )
-    }
-
-    // Only add delete option if this is not the user subscription at all
-    if (!isUserSubscription) {
-      list.push({
+    const list = [
+      {
+        key: 'edit-info',
+        label: t('profiles.editInfo.title'),
+        showDivider: false,
+        color: 'default',
+        className: ''
+      } as MenuItem,
+      {
+        key: 'edit-file',
+        label: t('profiles.editFile.title'),
+        showDivider: false,
+        color: 'default',
+        className: ''
+      } as MenuItem,
+      {
+        key: 'edit-rules',
+        label: t('profiles.editRules.title'),
+        showDivider: false,
+        color: 'default',
+        className: ''
+      } as MenuItem,
+      {
+        key: 'open-file',
+        label: t('profiles.openFile'),
+        showDivider: true,
+        color: 'default',
+        className: ''
+      } as MenuItem,
+      {
         key: 'delete',
         label: t('common.delete'),
         showDivider: false,
         color: 'danger',
         className: 'text-danger'
-      } as MenuItem)
-    }
-
-    if (info.home && !isEmptyUserSubscription) {
+      } as MenuItem
+    ]
+    if (info.home) {
       list.unshift({
         key: 'home',
         label: t('profiles.home'),
@@ -130,18 +123,6 @@ const ProfileItem: React.FC<Props> = (props) => {
         className: ''
       } as MenuItem)
     }
-    
-    // If empty user subscription, show a message item
-    if (isEmptyUserSubscription) {
-      list.push({
-        key: 'login-required',
-        label: '请先登录用户中心',
-        showDivider: false,
-        color: 'default',
-        className: 'text-default-500'
-      } as MenuItem)
-    }
-    
     return list
   }, [info, t])
 
@@ -155,6 +136,10 @@ const ProfileItem: React.FC<Props> = (props) => {
         setOpenFileEditor(true)
         break
       }
+      case 'edit-rules': {
+        setOpenRulesEditor(true)
+        break
+      }
       case 'open-file': {
         openFile('profile', info.id)
         break
@@ -164,13 +149,9 @@ const ProfileItem: React.FC<Props> = (props) => {
         mutateProfileConfig()
         break
       }
+
       case 'home': {
         open(info.home)
-        break
-      }
-      case 'login-required': {
-        // Navigate to user center for login
-        navigate('/user-center')
         break
       }
     }
@@ -182,19 +163,45 @@ const ProfileItem: React.FC<Props> = (props) => {
     setDropdownOpen(true)
   }
 
-  useEffect(() => {
-    if (isDragging) {
-      setTimeout(() => {
-        setDisableSelect(true)
-      }, 200)
-    } else {
-      setTimeout(() => {
-        setDisableSelect(false)
-      }, 200)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0) {
+      setClickStartPos({ x: e.clientX, y: e.clientY })
+      setIsActuallyDragging(false)
     }
-  }, [isDragging])
+  }
 
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!clickStartPos) return
 
+    const dx = e.clientX - clickStartPos.x
+    const dy = e.clientY - clickStartPos.y
+    if (dx * dx + dy * dy > 25) {
+      setIsActuallyDragging(true)
+    }
+  }
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    const cleanup = () => {
+      setClickStartPos(null)
+      setTimeout(() => setIsActuallyDragging(false), 100)
+    }
+
+    // 只处理左键点击
+    if (e.button !== 0) return cleanup()
+
+    // 检查功能按钮点击
+    const target = e.target as Element
+    if (target?.closest('button, [role="menu"], [role="menuitem"], [data-slot="trigger"]')) {
+      return cleanup()
+    }
+
+    // 处理卡片选中
+    if (!isActuallyDragging && !isDragging && clickStartPos) {
+      onPress()
+    }
+
+    cleanup()
+  }
 
   return (
     <div
@@ -207,6 +214,7 @@ const ProfileItem: React.FC<Props> = (props) => {
       }}
     >
       {openFileEditor && <EditFileModal id={info.id} onClose={() => setOpenFileEditor(false)} />}
+      {openRulesEditor && <EditRulesModal id={info.id} onClose={() => setOpenRulesEditor(false)} />}
       {openInfoEditor && (
         <EditInfoModal
           item={info}
@@ -214,44 +222,33 @@ const ProfileItem: React.FC<Props> = (props) => {
           updateProfileItem={updateProfileItem}
         />
       )}
-      
+
       <Card
         as="div"
         fullWidth
-        isPressable
-        onPress={() => {
-          if (disableSelect) return
-          setSelecting(true)
-          onPress().finally(() => {
-            setSelecting(false)
-          })
-        }}
+        isPressable={false}
         onContextMenu={handleContextMenu}
-        className={`${isCurrent ? 'bg-primary' : ''} ${selecting ? 'blur-sm' : ''}`}
+        className={`${isCurrent ? 'bg-primary' : ''} cursor-pointer transition-colors duration-150`}
       >
-        <div ref={setNodeRef} {...attributes} {...listeners} className="w-full h-full">
+        <div
+          ref={setNodeRef}
+          {...attributes}
+          {...listeners}
+          className="w-full h-full"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
           <CardBody className="pb-1">
             <div className="flex justify-between h-[32px]">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <h3
-                  title={info?.name}
-                  className={`text-ellipsis whitespace-nowrap overflow-hidden text-md font-bold leading-[32px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
-                >
-                  {info?.name}
-                </h3>
-                {info.id === 'user-subscription-meta' && (
-                  <Chip 
-                    size="sm" 
-                    color={info.url === 'https://example.com/empty-subscription' ? 'default' : 'warning'} 
-                    variant="flat"
-                    className="text-xs"
-                  >
-                    {info.url === 'https://example.com/empty-subscription' ? '未登录' : '用户订阅'}
-                  </Chip>
-                )}
-              </div>
+              <h3
+                title={info?.name}
+                className={`text-ellipsis whitespace-nowrap overflow-hidden text-md font-bold leading-[32px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
+              >
+                {info?.name}
+              </h3>
               <div className="flex">
-                {info.type === 'remote' && info.url !== 'https://example.com/empty-subscription' && (
+                {info.type === 'remote' && (
                   <Tooltip placement="left" content={dayjs(info.updated).fromNow()}>
                     <Button
                       isIconOnly
@@ -273,33 +270,28 @@ const ProfileItem: React.FC<Props> = (props) => {
                   </Tooltip>
                 )}
 
-                {menuItems.length > 0 && (
-                  <Dropdown
-                    isOpen={dropdownOpen}
-                    onOpenChange={setDropdownOpen}
-                  >
-                    <DropdownTrigger>
-                      <Button isIconOnly size="sm" variant="light" color="default">
-                        <IoMdMore
-                          color="default"
-                          className={`text-[24px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
-                        />
-                      </Button>
-                    </DropdownTrigger>
-                    <DropdownMenu onAction={onMenuAction}>
-                      {menuItems.map((item) => (
-                        <DropdownItem
-                          showDivider={item.showDivider}
-                          key={item.key}
-                          color={item.color}
-                          className={item.className}
-                        >
-                          {item.label}
-                        </DropdownItem>
-                      ))}
-                    </DropdownMenu>
-                  </Dropdown>
-                )}
+                <Dropdown isOpen={dropdownOpen} onOpenChange={setDropdownOpen}>
+                  <DropdownTrigger>
+                    <Button isIconOnly size="sm" variant="light" color="default">
+                      <IoMdMore
+                        color="default"
+                        className={`text-[24px] ${isCurrent ? 'text-primary-foreground' : 'text-foreground'}`}
+                      />
+                    </Button>
+                  </DropdownTrigger>
+                  <DropdownMenu onAction={onMenuAction}>
+                    {menuItems.map((item) => (
+                      <DropdownItem
+                        showDivider={item.showDivider}
+                        key={item.key}
+                        color={item.color}
+                        className={item.className}
+                      >
+                        {item.label}
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                </Dropdown>
               </div>
             </div>
             {info.type === 'remote' && extra && (
@@ -316,7 +308,9 @@ const ProfileItem: React.FC<Props> = (props) => {
                       await patchAppConfig({ profileDisplayDate: 'update' })
                     }}
                   >
-                    {extra.expire ? dayjs.unix(extra.expire).format('YYYY-MM-DD') : t('profiles.neverExpire')}
+                    {extra.expire
+                      ? dayjs.unix(extra.expire).format('YYYY-MM-DD')
+                      : t('profiles.neverExpire')}
                   </Button>
                 ) : (
                   <Button
@@ -343,7 +337,7 @@ const ProfileItem: React.FC<Props> = (props) => {
                   variant="bordered"
                   className={`${isCurrent ? 'text-primary-foreground border-primary-foreground' : 'border-primary text-primary'}`}
                 >
-                    {t('profiles.remote')}
+                  {t('profiles.remote')}
                 </Chip>
                 <small>{dayjs(info.updated).fromNow()}</small>
               </div>
@@ -357,14 +351,14 @@ const ProfileItem: React.FC<Props> = (props) => {
                   variant="bordered"
                   className={`${isCurrent ? 'text-primary-foreground border-primary-foreground' : 'border-primary text-primary'}`}
                 >
-                    {t('profiles.local')}
+                  {t('profiles.local')}
                 </Chip>
               </div>
             )}
             {extra && (
               <Progress
                 className="w-full"
-                  aria-label={t('profiles.trafficUsage')}
+                aria-label={t('profiles.trafficUsage')}
                 classNames={{
                   indicator: isCurrent ? 'bg-primary-foreground' : 'bg-foreground'
                 }}

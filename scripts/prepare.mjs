@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import fs from 'fs'
 import AdmZip from 'adm-zip'
 import path from 'path'
@@ -45,6 +44,36 @@ async function getLatestAlphaVersion() {
   }
 }
 
+/* ======= mihomo smart ======= */
+const MIHOMO_SMART_VERSION_URL =
+  'https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha/version.txt'
+const MIHOMO_SMART_URL_PREFIX = `https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha`
+let MIHOMO_SMART_VERSION
+
+const MIHOMO_SMART_MAP = {
+  'win32-x64': 'mihomo-windows-amd64-v2-go120',
+  'win32-ia32': 'mihomo-windows-386-go120',
+  'win32-arm64': 'mihomo-windows-arm64',
+  'darwin-x64': 'mihomo-darwin-amd64-v2-go120',
+  'darwin-arm64': 'mihomo-darwin-arm64',
+  'linux-x64': 'mihomo-linux-amd64-v2-go120',
+  'linux-arm64': 'mihomo-linux-arm64'
+}
+
+async function getLatestSmartVersion() {
+  try {
+    const response = await fetch(MIHOMO_SMART_VERSION_URL, {
+      method: 'GET'
+    })
+    let v = await response.text()
+    MIHOMO_SMART_VERSION = v.trim() // Trim to remove extra whitespaces
+    console.log(`Latest smart version: ${MIHOMO_SMART_VERSION}`)
+  } catch (error) {
+    console.error('Error fetching latest smart version:', error.message)
+    process.exit(1)
+  }
+}
+
 /* ======= mihomo release ======= */
 const MIHOMO_VERSION_URL =
   'https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt'
@@ -87,6 +116,10 @@ if (!MIHOMO_ALPHA_MAP[`${platform}-${arch}`]) {
   throw new Error(`unsupported platform "${platform}-${arch}"`)
 }
 
+if (!MIHOMO_SMART_MAP[`${platform}-${arch}`]) {
+  throw new Error(`unsupported platform "${platform}-${arch}"`)
+}
+
 /**
  * core info
  */
@@ -118,6 +151,23 @@ function mihomo() {
   return {
     name: 'mihomo',
     targetFile: `mihomo${isWin ? '.exe' : ''}`,
+    exeFile,
+    zipFile,
+    downloadURL
+  }
+}
+
+function mihomoSmart() {
+  const name = MIHOMO_SMART_MAP[`${platform}-${arch}`]
+  const isWin = platform === 'win32'
+  const urlExt = isWin ? 'zip' : 'gz'
+  const downloadURL = `${MIHOMO_SMART_URL_PREFIX}/${name}-${MIHOMO_SMART_VERSION}.${urlExt}`
+  const exeFile = `${name}${isWin ? '.exe' : ''}`
+  const zipFile = `${name}-${MIHOMO_SMART_VERSION}.${urlExt}`
+
+  return {
+    name: 'mihomo-smart',
+    targetFile: `mihomo-smart${isWin ? '.exe' : ''}`,
     exeFile,
     zipFile,
     downloadURL
@@ -254,7 +304,7 @@ const resolveGeosite = () =>
 const resolveGeoIP = () =>
   resolveResource({
     file: 'geoip.dat',
-    downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip-lite.dat`
+    downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat`
   })
 const resolveASN = () =>
   resolveResource({
@@ -266,16 +316,68 @@ const resolveEnableLoopback = () =>
     file: 'enableLoopback.exe',
     downloadURL: `https://github.com/Kuingsmile/uwp-tool/releases/download/latest/enableLoopback.exe`
   })
-const resolveSysproxy = () =>
-  resolveResource({
-    file: 'sysproxy.exe',
-    downloadURL: `https://github.com/mihomo-party-org/sysproxy/releases/download/${arch}/sysproxy.exe`
-  })
-const resolveRunner = () =>
-  resolveResource({
-    file: 'mihomo-party-run.exe',
-    downloadURL: `https://github.com/mihomo-party-org/mihomo-party-run/releases/download/${arch}/mihomo-party-run.exe`
-  })
+/* ======= sysproxy-rs ======= */
+const SYSPROXY_RS_VERSION = 'v0.1.0'
+const SYSPROXY_RS_URL_PREFIX = `https://github.com/mihomo-party-org/sysproxy-rs-opti/releases/download/${SYSPROXY_RS_VERSION}`
+
+function getSysproxyNodeName() {
+  // 检测是否为 musl 系统（与 src/native/sysproxy/index.js 保持一致）
+  const isMusl = (() => {
+    if (platform !== 'linux') return false
+    try {
+      const output = execSync('ldd --version 2>&1 || true').toString()
+      return output.includes('musl')
+    } catch {
+      return false
+    }
+  })()
+
+  switch (platform) {
+    case 'win32':
+      if (arch === 'x64') return 'sysproxy.win32-x64-msvc.node'
+      if (arch === 'arm64') return 'sysproxy.win32-arm64-msvc.node'
+      if (arch === 'ia32') return 'sysproxy.win32-ia32-msvc.node'
+      break
+    case 'darwin':
+      if (arch === 'x64') return 'sysproxy.darwin-x64.node'
+      if (arch === 'arm64') return 'sysproxy.darwin-arm64.node'
+      break
+    case 'linux':
+      if (isMusl) {
+        if (arch === 'x64') return 'sysproxy.linux-x64-musl.node'
+        if (arch === 'arm64') return 'sysproxy.linux-arm64-musl.node'
+      } else {
+        if (arch === 'x64') return 'sysproxy.linux-x64-gnu.node'
+        if (arch === 'arm64') return 'sysproxy.linux-arm64-gnu.node'
+      }
+      break
+  }
+  throw new Error(`Unsupported platform for sysproxy-rs: ${platform}-${arch}`)
+}
+
+const resolveSysproxy = async () => {
+  const nodeName = getSysproxyNodeName()
+  const sidecarDir = path.join(cwd, 'extra', 'sidecar')
+  const targetPath = path.join(sidecarDir, nodeName)
+
+  fs.mkdirSync(sidecarDir, { recursive: true })
+
+  // 清理其他平台的 .node 文件
+  const files = fs.readdirSync(sidecarDir)
+  for (const file of files) {
+    if (file.endsWith('.node') && file !== nodeName) {
+      fs.rmSync(path.join(sidecarDir, file))
+      console.log(`[INFO]: removed ${file}`)
+    }
+  }
+
+  if (fs.existsSync(targetPath)) {
+    fs.rmSync(targetPath)
+  }
+
+  await downloadFile(`${SYSPROXY_RS_URL_PREFIX}/${nodeName}`, targetPath)
+  console.log(`[INFO]: ${nodeName} finished`)
+}
 
 const resolveMonitor = async () => {
   const tempDir = path.join(TEMP_DIR, 'TrafficMonitor')
@@ -305,7 +407,7 @@ const resolve7zip = () =>
   })
 const resolveSubstore = () =>
   resolveResource({
-    file: 'sub-store.bundle.js',
+    file: 'sub-store.bundle.cjs',
     downloadURL:
       'https://github.com/sub-store-org/Sub-Store/releases/latest/download/sub-store.bundle.js'
   })
@@ -360,6 +462,11 @@ const tasks = [
     func: () => getLatestReleaseVersion().then(() => resolveSidecar(mihomo())),
     retry: 5
   },
+  {
+    name: 'mihomo-smart',
+    func: () => getLatestSmartVersion().then(() => resolveSidecar(mihomoSmart())),
+    retry: 5
+  },
   { name: 'mmdb', func: resolveMmdb, retry: 5 },
   { name: 'metadb', func: resolveMetadb, retry: 5 },
   { name: 'geosite', func: resolveGeosite, retry: 5 },
@@ -379,14 +486,7 @@ const tasks = [
   {
     name: 'sysproxy',
     func: resolveSysproxy,
-    retry: 5,
-    winOnly: true
-  },
-  {
-    name: 'runner',
-    func: resolveRunner,
-    retry: 5,
-    winOnly: true
+    retry: 5
   },
   {
     name: 'monitor',
@@ -432,7 +532,14 @@ async function runTask() {
       break
     } catch (err) {
       console.error(`[ERROR]: task::${task.name} try ${i} ==`, err.message)
-      if (i === task.retry - 1) throw err
+      if (i === task.retry - 1) {
+        if (task.optional) {
+          console.log(`[WARN]: Optional task::${task.name} failed, skipping...`)
+          break
+        } else {
+          throw err
+        }
+      }
     }
   }
   return runTask()

@@ -1,4 +1,5 @@
 import { Button, Card, CardBody, CardFooter, Tooltip } from '@heroui/react'
+import { toast } from '@renderer/components/base/toast'
 import { calcTraffic } from '@renderer/utils/calc'
 import { mihomoVersion, restartCore } from '@renderer/utils/ipc'
 import React, { useEffect, useState } from 'react'
@@ -19,7 +20,7 @@ interface Props {
 const MihomoCoreCard: React.FC<Props> = (props) => {
   const { appConfig } = useAppConfig()
   const { iconOnly } = props
-  const { mihomoCoreCardStatus = 'col-span-2' } = appConfig || {}
+  const { mihomoCoreCardStatus = 'col-span-2', disableAnimations = false } = appConfig || {}
   const { data: version, mutate } = useSWR('mihomoVersion', mihomoVersion)
   const location = useLocation()
   const navigate = useNavigate()
@@ -42,14 +43,15 @@ const MihomoCoreCard: React.FC<Props> = (props) => {
     const token = PubSub.subscribe('mihomo-core-changed', () => {
       mutate()
     })
-    window.electron.ipcRenderer.on('mihomoMemory', (_e, info: IMihomoMemoryInfo) => {
+    window.electron.ipcRenderer.on('mihomoMemory', (_e, ...args) => {
+      const info = args[0] as IMihomoMemoryInfo
       setMem(info.inuse)
     })
     return (): void => {
       PubSub.unsubscribe(token)
       window.electron.ipcRenderer.removeAllListeners('mihomoMemory')
     }
-  }, [])
+  }, [mutate])
 
   if (iconOnly) {
     return (
@@ -87,7 +89,7 @@ const MihomoCoreCard: React.FC<Props> = (props) => {
           ref={setNodeRef}
           {...attributes}
           {...listeners}
-          className={`${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? 'scale-[0.97] tap-highlight-transparent' : ''}`}
+          className={`${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? `${disableAnimations ? '' : 'scale-[0.95] tap-highlight-transparent'}` : ''}`}
         >
           <CardBody>
             <div
@@ -107,11 +109,12 @@ const MihomoCoreCard: React.FC<Props> = (props) => {
                 size="sm"
                 variant="light"
                 color="default"
+                title={t('mihomo.restart')}
                 onPress={async () => {
                   try {
                     await restartCore()
                   } catch (e) {
-                    alert(e)
+                    toast.error(String(e))
                   } finally {
                     mutate()
                   }
@@ -138,7 +141,7 @@ const MihomoCoreCard: React.FC<Props> = (props) => {
           ref={setNodeRef}
           {...attributes}
           {...listeners}
-          className={`${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? 'scale-[0.97] tap-highlight-transparent' : ''}`}
+          className={`${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? `${disableAnimations ? '' : 'scale-[0.95] tap-highlight-transparent'}` : ''}`}
         >
           <CardBody className="pb-1 pt-0 px-0">
             <div className="flex justify-between">
@@ -157,7 +160,7 @@ const MihomoCoreCard: React.FC<Props> = (props) => {
           </CardBody>
           <CardFooter className="pt-1">
             <h3
-              className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
+              className={`text-md font-bold text-ellipsis whitespace-nowrap overflow-hidden ${match ? 'text-primary-foreground' : 'text-foreground'}`}
             >
               {t('sider.cards.core')}
             </h3>

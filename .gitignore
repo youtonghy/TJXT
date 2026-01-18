@@ -8,3 +8,6 @@ out
 *.log*
 .idea
 *.ttf
+party.md
+CLAUDE.md
+tsconfig.node.tsbuildinfo

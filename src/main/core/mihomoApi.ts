@@ -1,14 +1,18 @@
 import axios, { AxiosInstance } from 'axios'
-import { getAppConfig, getControledMihomoConfig } from '../config'
-import { mainWindow } from '..'
 import WebSocket from 'ws'
+import { getAppConfig, getControledMihomoConfig } from '../config'
+import { mainWindow } from '../window'
 import { tray } from '../resolve/tray'
 import { calcTraffic } from '../utils/calc'
-import { getRuntimeConfig } from './factory'
 import { floatingWindow } from '../resolve/floatingWindow'
-import { mihomoIpcPath } from './manager'
+import { createLogger } from '../utils/logger'
+import { getRuntimeConfig } from './factory'
+import { getMihomoIpcPath } from './manager'
 
-let axiosIns: AxiosInstance = null!
+const mihomoApiLogger = createLogger('MihomoApi')
+
+let axiosIns: AxiosInstance | null = null
+let currentIpcPath: string = ''
 let mihomoTrafficWs: WebSocket | null = null
 let trafficRetry = 10
 let mihomoMemoryWs: WebSocket | null = null
@@ -18,12 +22,21 @@ let logsRetry = 10
 let mihomoConnectionsWs: WebSocket | null = null
 let connectionsRetry = 10
 
+const MAX_RETRY = 10
+
 export const getAxios = async (force: boolean = false): Promise<AxiosInstance> => {
-  if (axiosIns && !force) return axiosIns
+  const dynamicIpcPath = getMihomoIpcPath()
+
+  if (axiosIns && !force && currentIpcPath === dynamicIpcPath) {
+    return axiosIns
+  }
+
+  currentIpcPath = dynamicIpcPath
+  mihomoApiLogger.info(`Creating axios instance with path: ${dynamicIpcPath}`)
 
   axiosIns = axios.create({
     baseURL: `http://localhost`,
-    socketPath: mihomoIpcPath,
+    socketPath: dynamicIpcPath,
     timeout: 15000
   })
 
@@ -32,6 +45,12 @@ export const getAxios = async (force: boolean = false): Promise<AxiosInstance> =
       return response.data
     },
     (error) => {
+      if (error.code === 'ENOENT') {
+        mihomoApiLogger.debug(`Pipe not ready: ${error.config?.socketPath}`)
+      } else {
+        mihomoApiLogger.error(`Axios error with path ${dynamicIpcPath}: ${error.message}`)
+      }
+
       if (error.response && error.response.data) {
         return Promise.reject(error.response.data)
       }
@@ -86,14 +105,14 @@ export const mihomoGroups = async (): Promise<IMihomoMixedGroup[]> => {
     if (proxies.proxies[name] && 'all' in proxies.proxies[name] && !proxies.proxies[name].hidden) {
       const newGroup = proxies.proxies[name]
       newGroup.testUrl = url
-      const newAll = newGroup.all.map((name) => proxies.proxies[name])
+      const newAll = (newGroup.all || []).map((name) => proxies.proxies[name])
       groups.push({ ...newGroup, all: newAll })
     }
   })
   if (!groups.find((group) => group.name === 'GLOBAL')) {
     const newGlobal = proxies.proxies['GLOBAL'] as IMihomoGroup
     if (!newGlobal.hidden) {
-      const newAll = newGlobal.all.map((name) => proxies.proxies[name])
+      const newAll = (newGlobal.all || []).map((name) => proxies.proxies[name])
       groups.push({ ...newGlobal, all: newAll })
     }
   }
@@ -168,11 +187,63 @@ export const mihomoUpgrade = async (): Promise<void> => {
   return await instance.post('/upgrade')
 }
 
+export const mihomoUpgradeUI = async (): Promise<void> => {
+  const instance = await getAxios()
+  return await instance.post('/upgrade/ui')
+}
+
+export const mihomoUpgradeConfig = async (): Promise<void> => {
+  mihomoApiLogger.info('mihomoUpgradeConfig called')
+
+  try {
+    const instance = await getAxios()
+    mihomoApiLogger.info('axios instance obtained')
+    const { diffWorkDir = false } = await getAppConfig()
+    const { current } = await import('../config').then((mod) => mod.getProfileConfig(true))
+    const { mihomoWorkConfigPath } = await import('../utils/dirs')
+    const configPath = diffWorkDir ? mihomoWorkConfigPath(current) : mihomoWorkConfigPath('work')
+    mihomoApiLogger.info(`config path: ${configPath}`)
+    const { existsSync } = await import('fs')
+    if (!existsSync(configPath)) {
+      mihomoApiLogger.info('config file does not exist, generating...')
+      const { generateProfile } = await import('./factory')
+      await generateProfile()
+    }
+    const response = await instance.put('/configs?force=true', {
+      path: configPath
+    })
+    mihomoApiLogger.info(`config upgrade request completed ${response?.status || 'no status'}`)
+  } catch (error) {
+    mihomoApiLogger.error('Failed to upgrade config', error)
+    throw error
+  }
+}
+
+// Smart 内核 API
+export const mihomoSmartGroupWeights = async (
+  groupName: string
+): Promise<Record<string, number>> => {
+  const instance = await getAxios()
+  return await instance.get(`/group/${encodeURIComponent(groupName)}/weights`)
+}
+
+export const mihomoSmartFlushCache = async (configName?: string): Promise<void> => {
+  const instance = await getAxios()
+  if (configName) {
+    return await instance.post(`/cache/smart/flush/${encodeURIComponent(configName)}`)
+  } else {
+    return await instance.post('/cache/smart/flush')
+  }
+}
+
 export const startMihomoTraffic = async (): Promise<void> => {
+  trafficRetry = MAX_RETRY
   await mihomoTraffic()
 }
 
 export const stopMihomoTraffic = (): void => {
+  trafficRetry = 0
+
   if (mihomoTrafficWs) {
     mihomoTrafficWs.removeAllListeners()
     if (mihomoTrafficWs.readyState === WebSocket.OPEN) {
@@ -183,12 +254,16 @@ export const stopMihomoTraffic = (): void => {
 }
 
 const mihomoTraffic = async (): Promise<void> => {
-  mihomoTrafficWs = new WebSocket(`ws+unix:${mihomoIpcPath}:/traffic`)
+  const dynamicIpcPath = getMihomoIpcPath()
+  const wsUrl = `ws+unix:${dynamicIpcPath}:/traffic`
+
+  mihomoApiLogger.info(`Creating traffic WebSocket with URL: ${wsUrl}`)
+  mihomoTrafficWs = new WebSocket(wsUrl)
 
   mihomoTrafficWs.onmessage = async (e): Promise<void> => {
     const data = e.data as string
     const json = JSON.parse(data) as IMihomoTrafficInfo
-    trafficRetry = 10
+    trafficRetry = MAX_RETRY
     try {
       mainWindow?.webContents.send('mihomoTraffic', json)
       if (process.platform !== 'linux') {
@@ -208,11 +283,12 @@ const mihomoTraffic = async (): Promise<void> => {
   mihomoTrafficWs.onclose = (): void => {
     if (trafficRetry) {
       trafficRetry--
-      mihomoTraffic()
+      setTimeout(mihomoTraffic, 1000)
     }
   }
 
-  mihomoTrafficWs.onerror = (): void => {
+  mihomoTrafficWs.onerror = (error): void => {
+    mihomoApiLogger.error('Traffic WebSocket error', error)
     if (mihomoTrafficWs) {
       mihomoTrafficWs.close()
       mihomoTrafficWs = null
@@ -221,10 +297,13 @@ const mihomoTraffic = async (): Promise<void> => {
 }
 
 export const startMihomoMemory = async (): Promise<void> => {
+  memoryRetry = MAX_RETRY
   await mihomoMemory()
 }
 
 export const stopMihomoMemory = (): void => {
+  memoryRetry = 0
+
   if (mihomoMemoryWs) {
     mihomoMemoryWs.removeAllListeners()
     if (mihomoMemoryWs.readyState === WebSocket.OPEN) {
@@ -235,11 +314,13 @@ export const stopMihomoMemory = (): void => {
 }
 
 const mihomoMemory = async (): Promise<void> => {
-  mihomoMemoryWs = new WebSocket(`ws+unix:${mihomoIpcPath}:/memory`)
+  const dynamicIpcPath = getMihomoIpcPath()
+  const wsUrl = `ws+unix:${dynamicIpcPath}:/memory`
+  mihomoMemoryWs = new WebSocket(wsUrl)
 
   mihomoMemoryWs.onmessage = (e): void => {
     const data = e.data as string
-    memoryRetry = 10
+    memoryRetry = MAX_RETRY
     try {
       mainWindow?.webContents.send('mihomoMemory', JSON.parse(data) as IMihomoMemoryInfo)
     } catch {
@@ -250,7 +331,7 @@ const mihomoMemory = async (): Promise<void> => {
   mihomoMemoryWs.onclose = (): void => {
     if (memoryRetry) {
       memoryRetry--
-      mihomoMemory()
+      setTimeout(mihomoMemory, 1000)
     }
   }
 
@@ -263,10 +344,13 @@ const mihomoMemory = async (): Promise<void> => {
 }
 
 export const startMihomoLogs = async (): Promise<void> => {
+  logsRetry = MAX_RETRY
   await mihomoLogs()
 }
 
 export const stopMihomoLogs = (): void => {
+  logsRetry = 0
+
   if (mihomoLogsWs) {
     mihomoLogsWs.removeAllListeners()
     if (mihomoLogsWs.readyState === WebSocket.OPEN) {
@@ -278,12 +362,14 @@ export const stopMihomoLogs = (): void => {
 
 const mihomoLogs = async (): Promise<void> => {
   const { 'log-level': logLevel = 'info' } = await getControledMihomoConfig()
+  const dynamicIpcPath = getMihomoIpcPath()
+  const wsUrl = `ws+unix:${dynamicIpcPath}:/logs?level=${logLevel}`
 
-  mihomoLogsWs = new WebSocket(`ws+unix:${mihomoIpcPath}:/logs?level=${logLevel}`)
+  mihomoLogsWs = new WebSocket(wsUrl)
 
   mihomoLogsWs.onmessage = (e): void => {
     const data = e.data as string
-    logsRetry = 10
+    logsRetry = MAX_RETRY
     try {
       mainWindow?.webContents.send('mihomoLogs', JSON.parse(data) as IMihomoLogInfo)
     } catch {
@@ -294,7 +380,7 @@ const mihomoLogs = async (): Promise<void> => {
   mihomoLogsWs.onclose = (): void => {
     if (logsRetry) {
       logsRetry--
-      mihomoLogs()
+      setTimeout(mihomoLogs, 1000)
     }
   }
 
@@ -307,10 +393,13 @@ const mihomoLogs = async (): Promise<void> => {
 }
 
 export const startMihomoConnections = async (): Promise<void> => {
+  connectionsRetry = MAX_RETRY
   await mihomoConnections()
 }
 
 export const stopMihomoConnections = (): void => {
+  connectionsRetry = 0
+
   if (mihomoConnectionsWs) {
     mihomoConnectionsWs.removeAllListeners()
     if (mihomoConnectionsWs.readyState === WebSocket.OPEN) {
@@ -321,11 +410,13 @@ export const stopMihomoConnections = (): void => {
 }
 
 const mihomoConnections = async (): Promise<void> => {
-  mihomoConnectionsWs = new WebSocket(`ws+unix:${mihomoIpcPath}:/connections`)
+  const dynamicIpcPath = getMihomoIpcPath()
+  const wsUrl = `ws+unix:${dynamicIpcPath}:/connections`
+  mihomoConnectionsWs = new WebSocket(wsUrl)
 
   mihomoConnectionsWs.onmessage = (e): void => {
     const data = e.data as string
-    connectionsRetry = 10
+    connectionsRetry = MAX_RETRY
     try {
       mainWindow?.webContents.send('mihomoConnections', JSON.parse(data) as IMihomoConnectionsInfo)
     } catch {
@@ -336,7 +427,7 @@ const mihomoConnections = async (): Promise<void> => {
   mihomoConnectionsWs.onclose = (): void => {
     if (connectionsRetry) {
       connectionsRetry--
-      mihomoConnections()
+      setTimeout(mihomoConnections, 1000)
     }
   }
 
@@ -346,4 +437,34 @@ const mihomoConnections = async (): Promise<void> => {
       mihomoConnectionsWs = null
     }
   }
+}
+
+export async function SysProxyStatus(): Promise<boolean> {
+  const appConfig = await getAppConfig()
+  return appConfig.sysProxy.enable
+}
+
+export const TunStatus = async (): Promise<boolean> => {
+  const config = await getControledMihomoConfig()
+  return config?.tun?.enable === true
+}
+
+export function calculateTrayIconStatus(
+  sysProxyEnabled: boolean,
+  tunEnabled: boolean
+): 'white' | 'blue' | 'green' | 'red' {
+  if (sysProxyEnabled && tunEnabled) {
+    return 'red' // 系统代理 + TUN 同时启用（警告状态）
+  } else if (sysProxyEnabled) {
+    return 'blue' // 仅系统代理启用
+  } else if (tunEnabled) {
+    return 'green' // 仅 TUN 启用
+  } else {
+    return 'white' // 全关
+  }
+}
+
+export async function getTrayIconStatus(): Promise<'white' | 'blue' | 'green' | 'red'> {
+  const [sysProxyEnabled, tunEnabled] = await Promise.all([SysProxyStatus(), TunStatus()])
+  return calculateTrayIconStatus(sysProxyEnabled, tunEnabled)
 }

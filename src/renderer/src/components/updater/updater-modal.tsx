@@ -1,17 +1,17 @@
 import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
   Button,
-  Code
+  Code,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader
 } from '@heroui/react'
+import { toast } from '@renderer/components/base/toast'
 import ReactMarkdown from 'react-markdown'
 import React, { useState } from 'react'
 import { downloadAndInstallUpdate } from '@renderer/utils/ipc'
 import { useTranslation } from 'react-i18next'
-import { releasePage } from '../../../../shared/constants'
 
 interface Props {
   version: string
@@ -28,7 +28,7 @@ const UpdaterModal: React.FC<Props> = (props) => {
     try {
       await downloadAndInstallUpdate(version)
     } catch (e) {
-      alert(e)
+      toast.error(String(e))
     }
   }
 
@@ -49,24 +49,25 @@ const UpdaterModal: React.FC<Props> = (props) => {
             size="sm"
             className="flex app-nodrag"
             onPress={() => {
-              open(releasePage(version))
+              open(`https://github.com/mihomo-party-org/mihomo-party/releases/tag/v${version}`)
             }}
           >
             {t('common.updater.goToDownload')}
           </Button>
         </ModalHeader>
         <ModalBody className="h-full">
-          <ReactMarkdown
-            className="markdown-body select-text"
-            components={{
-              a: ({ ...props }) => <a target="_blank" className="text-primary" {...props} />,
-              code: ({ children }) => <Code size="sm">{children}</Code>,
-              h3: ({ ...props }) => <h3 className="text-lg font-bold" {...props} />,
-              li: ({ children }) => <li className="list-disc list-inside">{children}</li>
-            }}
-          >
-            {changelog}
-          </ReactMarkdown>
+          <div className="markdown-body select-text">
+            <ReactMarkdown
+              components={{
+                a: ({ ...props }) => <a target="_blank" className="text-primary" {...props} />,
+                code: ({ children }) => <Code size="sm">{children}</Code>,
+                h3: ({ ...props }) => <h3 className="text-lg font-bold" {...props} />,
+                li: ({ children }) => <li className="list-disc list-inside">{children}</li>
+              }}
+            >
+              {changelog}
+            </ReactMarkdown>
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button size="sm" variant="light" onPress={onClose}>
@@ -82,7 +83,7 @@ const UpdaterModal: React.FC<Props> = (props) => {
                 await onUpdate()
                 onClose()
               } catch (e) {
-                alert(e)
+                toast.error(String(e))
               } finally {
                 setDownloading(false)
               }

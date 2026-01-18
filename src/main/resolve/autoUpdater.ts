@@ -1,21 +1,23 @@
-import axios from 'axios'
-import yaml from 'yaml'
-import { app, shell } from 'electron'
-import { getControledMihomoConfig } from '../config'
-import { dataDir, exeDir, exePath, isPortable, resourcesFilesDir } from '../utils/dirs'
 import { copyFile, rm, writeFile } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import os from 'os'
 import { exec, execSync, spawn } from 'child_process'
 import { promisify } from 'util'
-import { latestYmlUrl, REPO_SLUG, TAG_PREFIX } from '../../shared/constants'
+import { app, shell } from 'electron'
+import i18next from 'i18next'
+import { appLogger } from '../utils/logger'
+import { dataDir, exeDir, exePath, isPortable, resourcesFilesDir } from '../utils/dirs'
+import { getControledMihomoConfig } from '../config'
+import { checkAdminPrivileges } from '../core/manager'
+import { parse } from '../utils/yaml'
+import * as chromeRequest from '../utils/chromeRequest'
 
 export async function checkUpdate(): Promise<IAppVersion | undefined> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
-  let res
-  try {
-    res = await axios.get(latestYmlUrl(), {
+  const res = await chromeRequest.get(
+    'https://github.com/mihomo-party-org/mihomo-party/releases/latest/download/latest.yml',
+    {
       headers: { 'Content-Type': 'application/octet-stream' },
       proxy: {
         protocol: 'http',
@@ -23,47 +25,51 @@ export async function checkUpdate(): Promise<IAppVersion | undefined> {
         port: mixedPort
       },
       responseType: 'text'
-    })
-  } catch (e) {
-    // Fallback: try to fetch from repo root (raw) if release asset not found
-    const status = (e as any)?.response?.status
-    if (status !== 404) throw e
-    const fallbackUrl = `https://raw.githubusercontent.com/${REPO_SLUG}/main/latest.yml`
-    res = await axios.get(fallbackUrl, {
-      headers: { 'Content-Type': 'application/octet-stream' },
-      proxy: {
-        protocol: 'http',
-        host: '127.0.0.1',
-        port: mixedPort
-      },
-      responseType: 'text'
-    })
-  }
-  const latest = yaml.parse(res.data, { merge: true }) as IAppVersion
+    }
+  )
+  const latest = parse(res.data as string) as IAppVersion
   const currentVersion = app.getVersion()
-  if (latest.version !== currentVersion) {
+  if (compareVersions(latest.version, currentVersion) > 0) {
     return latest
   } else {
     return undefined
   }
 }
 
+// 1:新 -1:旧 0:相同
+function compareVersions(a: string, b: string): number {
+  const parsePart = (part: string) => {
+    const numPart = part.split('-')[0]
+    const num = parseInt(numPart, 10)
+    return isNaN(num) ? 0 : num
+  }
+  const v1 = a.replace(/^v/, '').split('.').map(parsePart)
+  const v2 = b.replace(/^v/, '').split('.').map(parsePart)
+  for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+    const num1 = v1[i] || 0
+    const num2 = v2[i] || 0
+    if (num1 > num2) return 1
+    if (num1 < num2) return -1
+  }
+  return 0
+}
+
 export async function downloadAndInstallUpdate(version: string): Promise<void> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
-  const baseName = app.getName() // should match electron-builder ${name}
+  const baseUrl = `https://github.com/mihomo-party-org/mihomo-party/releases/download/v${version}/`
   const fileMap = {
-    'win32-x64': `${baseName}-windows-${version}-x64-setup.exe`,
-    'win32-ia32': `${baseName}-windows-${version}-ia32-setup.exe`,
-    'win32-arm64': `${baseName}-windows-${version}-arm64-setup.exe`,
-    'darwin-x64': `${baseName}-macos-${version}-x64.pkg`,
-    'darwin-arm64': `${baseName}-macos-${version}-arm64.pkg`
-  } as Record<string, string>
+    'win32-x64': `clash-party-windows-${version}-x64-setup.exe`,
+    'win32-ia32': `clash-party-windows-${version}-ia32-setup.exe`,
+    'win32-arm64': `clash-party-windows-${version}-arm64-setup.exe`,
+    'darwin-x64': `clash-party-macos-${version}-x64.pkg`,
+    'darwin-arm64': `clash-party-macos-${version}-arm64.pkg`
+  }
   let file = fileMap[`${process.platform}-${process.arch}`]
   if (isPortable()) {
     file = file.replace('-setup.exe', '-portable.7z')
   }
   if (!file) {
-    throw new Error('不支持自动更新，请手动下载更新')
+    throw new Error(i18next.t('common.error.autoUpdateNotSupported'))
   }
   if (process.platform === 'win32' && parseInt(os.release()) < 10) {
     file = file.replace('windows', 'win7')
@@ -76,48 +82,65 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
       file = file.replace('macos', 'catalina')
     }
   }
-  // Try multiple tag prefixes to improve compatibility (e.g., 'Ver', 'v', none)
-  const tagPrefixes = Array.from(new Set([TAG_PREFIX, 'Ver', 'v', '']))
-
   try {
     if (!existsSync(path.join(dataDir(), file))) {
-      let downloaded = false
-      let lastError: unknown = undefined
-      for (const prefix of tagPrefixes) {
-        const tag = `${prefix}${version}`
-        const baseUrl = `https://github.com/${REPO_SLUG}/releases/download/${tag}/`
-        try {
-          const res = await axios.get(`${baseUrl}${file}`, {
-            responseType: 'arraybuffer',
-            proxy: {
-              protocol: 'http',
-              host: '127.0.0.1',
-              port: mixedPort
-            },
-            headers: {
-              'Content-Type': 'application/octet-stream'
-            }
-          })
-          await writeFile(path.join(dataDir(), file), res.data)
-          downloaded = true
-          break
-        } catch (e) {
-          // Continue on 404, rethrow others
-          const status = (e as any)?.response?.status
-          if (status && status !== 404) throw e
-          lastError = e
-          continue
+      const res = await chromeRequest.get(`${baseUrl}${file}`, {
+        responseType: 'arraybuffer',
+        proxy: {
+          protocol: 'http',
+          host: '127.0.0.1',
+          port: mixedPort
+        },
+        headers: {
+          'Content-Type': 'application/octet-stream'
         }
-      }
-      if (!downloaded) {
-        throw lastError || new Error('Update file not found for any tag prefix')
-      }
+      })
+      await writeFile(path.join(dataDir(), file), res.data as string | Buffer)
     }
     if (file.endsWith('.exe')) {
-      spawn(path.join(dataDir(), file), ['/S', '--force-run'], {
-        detached: true,
-        stdio: 'ignore'
-      }).unref()
+      try {
+        const installerPath = path.join(dataDir(), file)
+        const isAdmin = await checkAdminPrivileges()
+
+        if (isAdmin) {
+          await appLogger.info('Running installer with existing admin privileges')
+          spawn(installerPath, ['/S', '--force-run'], {
+            detached: true,
+            stdio: 'ignore'
+          }).unref()
+        } else {
+          // 提升权限安装
+          const escapedPath = installerPath.replace(/'/g, "''")
+          const args = ['/S', '--force-run']
+          const argsString = args.map((arg) => arg.replace(/'/g, "''")).join("', '")
+
+          const command = `powershell  -NoProfile -Command "Start-Process -FilePath '${escapedPath}' -ArgumentList '${argsString}' -Verb RunAs -WindowStyle Hidden"`
+
+          await appLogger.info('Starting installer with elevated privileges')
+
+          const execPromise = promisify(exec)
+          await execPromise(command, { windowsHide: true })
+
+          await appLogger.info('Installer started successfully with elevation')
+        }
+      } catch (installerError) {
+        await appLogger.error('Failed to start installer, trying fallback', installerError)
+
+        // Fallback: 尝试使用 shell.openPath 打开安装包
+        try {
+          await shell.openPath(path.join(dataDir(), file))
+          await appLogger.info('Opened installer with shell.openPath as fallback')
+        } catch (fallbackError) {
+          await appLogger.error('Fallback method also failed', fallbackError)
+          const installerErrorMessage =
+            installerError instanceof Error ? installerError.message : String(installerError)
+          const fallbackErrorMessage =
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+          throw new Error(
+            `Failed to execute installer: ${installerErrorMessage}. Fallback also failed: ${fallbackErrorMessage}`
+          )
+        }
+      }
     }
     if (file.endsWith('.7z')) {
       await copyFile(path.join(resourcesFilesDir(), '7za.exe'), path.join(dataDir(), '7za.exe'))

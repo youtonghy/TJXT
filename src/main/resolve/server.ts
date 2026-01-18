@@ -1,7 +1,4 @@
-import { getAppConfig, getControledMihomoConfig } from '../config'
 import { Worker } from 'worker_threads'
-import { dataDir, mihomoWorkDir, subStoreDir, substoreLogPath } from '../utils/dirs'
-import subStoreIcon from '../../../resources/subStoreIcon.png?asset'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import { writeFile, rm, cp } from 'fs/promises'
 import http from 'http'
@@ -9,8 +6,12 @@ import net from 'net'
 import path from 'path'
 import { nativeImage } from 'electron'
 import express from 'express'
-import axios from 'axios'
 import AdmZip from 'adm-zip'
+import * as chromeRequest from '../utils/chromeRequest'
+import subStoreIcon from '../../../resources/subStoreIcon.png?asset'
+import { dataDir, mihomoWorkDir, subStoreDir, substoreLogPath } from '../utils/dirs'
+import { getAppConfig, getControledMihomoConfig } from '../config'
+import { systemLogger } from '../utils/logger'
 
 export let pacPort: number
 export let subStorePort: number
@@ -111,14 +112,14 @@ export async function startSubStoreBackendServer(): Promise<void> {
       SUB_STORE_BACKEND_API_HOST: subStoreHost,
       SUB_STORE_DATA_BASE_PATH: subStoreDir(),
       SUB_STORE_BACKEND_CUSTOM_ICON: icon.toDataURL(),
-      SUB_STORE_BACKEND_CUSTOM_NAME: 'Mihomo Party',
+      SUB_STORE_BACKEND_CUSTOM_NAME: 'Clash Party',
       SUB_STORE_BACKEND_SYNC_CRON: subStoreBackendSyncCron,
       SUB_STORE_BACKEND_DOWNLOAD_CRON: subStoreBackendDownloadCron,
       SUB_STORE_BACKEND_UPLOAD_CRON: subStoreBackendUploadCron,
       SUB_STORE_MMDB_COUNTRY_PATH: path.join(mihomoWorkDir(), 'country.mmdb'),
       SUB_STORE_MMDB_ASN_PATH: path.join(mihomoWorkDir(), 'ASN.mmdb')
     }
-    subStoreBackendWorker = new Worker(path.join(mihomoWorkDir(), 'sub-store.bundle.js'), {
+    subStoreBackendWorker = new Worker(path.join(mihomoWorkDir(), 'sub-store.bundle.cjs'), {
       env: useProxyInSubStore
         ? {
             ...env,
@@ -142,7 +143,7 @@ export async function stopSubStoreBackendServer(): Promise<void> {
 export async function downloadSubStore(): Promise<void> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
   const frontendDir = path.join(mihomoWorkDir(), 'sub-store-frontend')
-  const backendPath = path.join(mihomoWorkDir(), 'sub-store.bundle.js')
+  const backendPath = path.join(mihomoWorkDir(), 'sub-store.bundle.cjs')
   const tempDir = path.join(dataDir(), 'temp')
 
   try {
@@ -153,8 +154,8 @@ export async function downloadSubStore(): Promise<void> {
     mkdirSync(tempDir, { recursive: true })
 
     // 下载后端文件
-    const tempBackendPath = path.join(tempDir, 'sub-store.bundle.js')
-    const backendRes = await axios.get(
+    const tempBackendPath = path.join(tempDir, 'sub-store.bundle.cjs')
+    const backendRes = await chromeRequest.get(
       'https://github.com/sub-store-org/Sub-Store/releases/latest/download/sub-store.bundle.js',
       {
         responseType: 'arraybuffer',
@@ -166,9 +167,9 @@ export async function downloadSubStore(): Promise<void> {
         }
       }
     )
-    await writeFile(tempBackendPath, Buffer.from(backendRes.data))
+    await writeFile(tempBackendPath, Buffer.from(backendRes.data as Buffer))
     // 下载前端文件
-    const frontendRes = await axios.get(
+    const frontendRes = await chromeRequest.get(
       'https://github.com/sub-store-org/Sub-Store-Front-End/releases/latest/download/dist.zip',
       {
         responseType: 'arraybuffer',
@@ -181,7 +182,7 @@ export async function downloadSubStore(): Promise<void> {
       }
     )
     // 先解压到临时目录
-    const zip = new AdmZip(Buffer.from(frontendRes.data))
+    const zip = new AdmZip(Buffer.from(frontendRes.data as Buffer))
     zip.extractAllTo(tempDir, true)
     await cp(tempBackendPath, backendPath)
     if (existsSync(frontendDir)) {
@@ -191,7 +192,7 @@ export async function downloadSubStore(): Promise<void> {
     await cp(path.join(tempDir, 'dist'), frontendDir, { recursive: true })
     await rm(tempDir, { recursive: true })
   } catch (error) {
-    console.error('substore.downloadFailed:', error)
+    await systemLogger.error('substore.downloadFailed', error)
     throw error
   }
 }

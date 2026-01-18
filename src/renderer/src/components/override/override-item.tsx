@@ -8,16 +8,17 @@ import {
   DropdownMenu,
   DropdownTrigger
 } from '@heroui/react'
+import { toast } from '@renderer/components/base/toast'
 import { IoMdMore, IoMdRefresh } from 'react-icons/io'
 import dayjs from '@renderer/utils/dayjs'
-import React, { Key, useEffect, useMemo, useState } from 'react'
-import EditFileModal from './edit-file-modal'
-import EditInfoModal from './edit-info-modal'
+import React, { Key, useMemo, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import ExecLogModal from './exec-log-modal'
 import { openFile, restartCore } from '@renderer/utils/ipc'
 import { useTranslation } from 'react-i18next'
+import ExecLogModal from './exec-log-modal'
+import EditInfoModal from './edit-info-modal'
+import EditFileModal from './edit-file-modal'
 
 interface Props {
   info: IOverrideItem
@@ -54,7 +55,7 @@ const OverrideItem: React.FC<Props> = (props) => {
     id: info.id
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
-  const [disableOpen, setDisableOpen] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const menuItems: MenuItem[] = useMemo(() => {
     const list = [
       {
@@ -124,17 +125,11 @@ const OverrideItem: React.FC<Props> = (props) => {
     }
   }
 
-  useEffect(() => {
-    if (isDragging) {
-      setTimeout(() => {
-        setDisableOpen(true)
-      }, 200)
-    } else {
-      setTimeout(() => {
-        setDisableOpen(false)
-      }, 200)
-    }
-  }, [isDragging])
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropdownOpen(true)
+  }
 
   return (
     <div
@@ -164,9 +159,12 @@ const OverrideItem: React.FC<Props> = (props) => {
       <Card
         as="div"
         fullWidth
-        isPressable
-        onPress={() => {
-          if (disableOpen) return
+        className="cursor-pointer"
+        onContextMenu={handleContextMenu}
+        onDoubleClick={(e) => {
+          if ((e.target as Element)?.closest('button, [role="menu"], [role="menuitem"]')) {
+            return
+          }
           setOpenFileEditor(true)
         }}
       >
@@ -193,7 +191,7 @@ const OverrideItem: React.FC<Props> = (props) => {
                         await addOverrideItem(info)
                         await restartCore()
                       } catch (e) {
-                        alert(e)
+                        toast.error(String(e))
                       } finally {
                         setUpdating(false)
                       }
@@ -206,7 +204,7 @@ const OverrideItem: React.FC<Props> = (props) => {
                   </Button>
                 )}
 
-                <Dropdown>
+                <Dropdown isOpen={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownTrigger>
                     <Button isIconOnly size="sm" variant="light" color="default">
                       <IoMdMore color="default" className={`text-[24px]`} />

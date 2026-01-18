@@ -1,3 +1,7 @@
+import { copyFile, mkdir, writeFile, readFile, stat } from 'fs/promises'
+import vm from 'vm'
+import { existsSync, writeFileSync } from 'fs'
+import path from 'path'
 import {
   getControledMihomoConfig,
   getProfileConfig,
@@ -12,23 +16,128 @@ import {
   mihomoProfileWorkDir,
   mihomoWorkConfigPath,
   mihomoWorkDir,
-  overridePath
+  overridePath,
+  rulePath
 } from '../utils/dirs'
-import yaml from 'yaml'
-import { copyFile, mkdir, writeFile } from 'fs/promises'
+import { parse, stringify } from '../utils/yaml'
 import { deepMerge } from '../utils/merge'
-import vm from 'vm'
-import { existsSync, writeFileSync } from 'fs'
-import path from 'path'
+import { createLogger } from '../utils/logger'
 
-let runtimeConfigStr: string
-let runtimeConfig: IMihomoConfig
+const factoryLogger = createLogger('Factory')
 
-export async function generateProfile(): Promise<void> {
-  const { current } = await getProfileConfig()
-  const { diffWorkDir = false } = await getAppConfig()
+let runtimeConfigStr: string = ''
+let runtimeConfig: IMihomoConfig = {} as IMihomoConfig
+
+// 辅助函数：处理带偏移量的规则
+function processRulesWithOffset(ruleStrings: string[], currentRules: string[], isAppend = false) {
+  const normalRules: string[] = []
+  const rules = [...currentRules]
+
+  ruleStrings.forEach((ruleStr) => {
+    const parts = ruleStr.split(',')
+    const firstPartIsNumber =
+      !isNaN(Number(parts[0])) && parts[0].trim() !== '' && parts.length >= 3
+
+    if (firstPartIsNumber) {
+      const offset = parseInt(parts[0])
+      const rule = parts.slice(1).join(',')
+
+      if (isAppend) {
+        // 后置规则的插入位置计算
+        const insertPosition = Math.max(0, rules.length - Math.min(offset, rules.length))
+        rules.splice(insertPosition, 0, rule)
+      } else {
+        // 前置规则的插入位置计算
+        const insertPosition = Math.min(offset, rules.length)
+        rules.splice(insertPosition, 0, rule)
+      }
+    } else {
+      normalRules.push(ruleStr)
+    }
+  })
+
+  return { normalRules, insertRules: rules }
+}
+
+export async function generateProfile(): Promise<string | undefined> {
+  // 读取最新的配置
+  const { current } = await getProfileConfig(true)
+  const {
+    diffWorkDir = false,
+    controlDns = true,
+    controlSniff = true,
+    useNameserverPolicy
+  } = await getAppConfig()
   const currentProfile = await overrideProfile(current, await getProfile(current))
-  const controledMihomoConfig = await getControledMihomoConfig()
+  let controledMihomoConfig = await getControledMihomoConfig()
+
+  // 根据开关状态过滤控制配置
+  controledMihomoConfig = { ...controledMihomoConfig }
+  if (!controlDns) {
+    delete controledMihomoConfig.dns
+    delete controledMihomoConfig.hosts
+  }
+  if (!controlSniff) {
+    delete controledMihomoConfig.sniffer
+  }
+  if (!useNameserverPolicy) {
+    delete controledMihomoConfig?.dns?.['nameserver-policy']
+  }
+
+  // 应用规则文件
+  try {
+    const ruleFilePath = rulePath(current || 'default')
+    if (existsSync(ruleFilePath)) {
+      const ruleFileContent = await readFile(ruleFilePath, 'utf-8')
+      const ruleData = parse(ruleFileContent) as {
+        prepend?: string[]
+        append?: string[]
+        delete?: string[]
+      } | null
+
+      if (ruleData && typeof ruleData === 'object') {
+        // 确保 rules 数组存在
+        if (!currentProfile.rules) {
+          currentProfile.rules = [] as unknown as []
+        }
+
+        let rules = [...currentProfile.rules] as unknown as string[]
+
+        // 处理前置规则
+        if (ruleData.prepend?.length) {
+          const { normalRules: prependRules, insertRules } = processRulesWithOffset(
+            ruleData.prepend,
+            rules
+          )
+          rules = [...prependRules, ...insertRules]
+        }
+
+        // 处理后置规则
+        if (ruleData.append?.length) {
+          const { normalRules: appendRules, insertRules } = processRulesWithOffset(
+            ruleData.append,
+            rules,
+            true
+          )
+          rules = [...insertRules, ...appendRules]
+        }
+
+        // 处理删除规则
+        if (ruleData.delete?.length) {
+          const deleteSet = new Set(ruleData.delete)
+          rules = rules.filter((rule) => {
+            const ruleStr = Array.isArray(rule) ? rule.join(',') : rule
+            return !deleteSet.has(ruleStr)
+          })
+        }
+
+        currentProfile.rules = rules as unknown as []
+      }
+    }
+  } catch (error) {
+    factoryLogger.error('Failed to read or apply rule file', error)
+  }
+
   const profile = deepMerge(currentProfile, controledMihomoConfig)
   // 确保可以拿到基础日志信息
   // 使用 debug 可以调试内核相关问题 `debug/pprof`
@@ -36,7 +145,7 @@ export async function generateProfile(): Promise<void> {
     profile['log-level'] = 'info'
   }
   runtimeConfig = profile
-  runtimeConfigStr = yaml.stringify(profile)
+  runtimeConfigStr = stringify(profile)
   if (diffWorkDir) {
     await prepareProfileWorkDir(current)
   }
@@ -44,16 +153,30 @@ export async function generateProfile(): Promise<void> {
     diffWorkDir ? mihomoWorkConfigPath(current) : mihomoWorkConfigPath('work'),
     runtimeConfigStr
   )
+  return current
 }
 
 async function prepareProfileWorkDir(current: string | undefined): Promise<void> {
   if (!existsSync(mihomoProfileWorkDir(current))) {
     await mkdir(mihomoProfileWorkDir(current), { recursive: true })
   }
+
+  const isSourceNewer = async (sourcePath: string, targetPath: string): Promise<boolean> => {
+    try {
+      const [sourceStats, targetStats] = await Promise.all([stat(sourcePath), stat(targetPath)])
+      return sourceStats.mtime > targetStats.mtime
+    } catch {
+      return true
+    }
+  }
+
   const copy = async (file: string): Promise<void> => {
     const targetPath = path.join(mihomoProfileWorkDir(current), file)
     const sourcePath = path.join(mihomoWorkDir(), file)
-    if (!existsSync(targetPath) && existsSync(sourcePath)) {
+    if (!existsSync(sourcePath)) return
+    // 复制条件：目标不存在 或 源文件更新
+    const shouldCopy = !existsSync(targetPath) || (await isSourceNewer(sourcePath, targetPath))
+    if (shouldCopy) {
       await copyFile(sourcePath, targetPath)
     }
   }
@@ -81,7 +204,7 @@ async function overrideProfile(
         profile = runOverrideScript(profile, content, item)
         break
       case 'yaml': {
-        let patch = yaml.parse(content, { merge: true }) || {}
+        let patch = parse(content) || {}
         if (typeof patch !== 'object') patch = {}
         profile = deepMerge(profile, patch)
         break

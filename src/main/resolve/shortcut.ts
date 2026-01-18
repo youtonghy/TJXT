@@ -1,5 +1,5 @@
 import { app, globalShortcut, ipcMain, Notification } from 'electron'
-import { mainWindow, triggerMainWindow } from '..'
+import { mainWindow, triggerMainWindow } from '../window'
 import {
   getAppConfig,
   getControledMihomoConfig,
@@ -9,8 +9,9 @@ import {
 import { triggerSysProxy } from '../sys/sysproxy'
 import { patchMihomoConfig } from '../core/mihomoApi'
 import { quitWithoutCore, restartCore } from '../core/manager'
-import { floatingWindow, triggerFloatingWindow } from './floatingWindow'
 import i18next from '../../shared/i18n'
+import { floatingWindow, triggerFloatingWindow } from './floatingWindow'
+import { updateTrayIcon } from './tray'
 
 export async function registerShortcut(
   oldShortcut: string,
@@ -26,7 +27,7 @@ export async function registerShortcut(
   switch (action) {
     case 'showWindowShortcut': {
       return globalShortcut.register(newShortcut, () => {
-        triggerMainWindow()
+        triggerMainWindow(true)
       })
     }
     case 'showFloatingWindowShortcut': {
@@ -43,7 +44,11 @@ export async function registerShortcut(
           await triggerSysProxy(!enable)
           await patchAppConfig({ sysProxy: { enable: !enable } })
           new Notification({
-            title: i18next.t(!enable ? 'common.notification.systemProxyEnabled' : 'common.notification.systemProxyDisabled')
+            title: i18next.t(
+              !enable
+                ? 'common.notification.systemProxyEnabled'
+                : 'common.notification.systemProxyDisabled'
+            )
           }).show()
           mainWindow?.webContents.send('appConfigUpdated')
           floatingWindow?.webContents.send('appConfigUpdated')
@@ -51,6 +56,7 @@ export async function registerShortcut(
           // ignore
         } finally {
           ipcMain.emit('updateTrayMenu')
+          await updateTrayIcon()
         }
       })
     }
@@ -66,7 +72,9 @@ export async function registerShortcut(
           }
           await restartCore()
           new Notification({
-            title: i18next.t(!enable ? 'common.notification.tunEnabled' : 'common.notification.tunDisabled')
+            title: i18next.t(
+              !enable ? 'common.notification.tunEnabled' : 'common.notification.tunDisabled'
+            )
           }).show()
           mainWindow?.webContents.send('controledMihomoConfigUpdated')
           floatingWindow?.webContents.send('appConfigUpdated')
@@ -74,6 +82,7 @@ export async function registerShortcut(
           // ignore
         } finally {
           ipcMain.emit('updateTrayMenu')
+          await updateTrayIcon()
         }
       })
     }
@@ -86,6 +95,7 @@ export async function registerShortcut(
         }).show()
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       })
     }
     case 'globalModeShortcut': {
@@ -97,6 +107,7 @@ export async function registerShortcut(
         }).show()
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       })
     }
     case 'directModeShortcut': {
@@ -108,6 +119,7 @@ export async function registerShortcut(
         }).show()
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         ipcMain.emit('updateTrayMenu')
+        await updateTrayIcon()
       })
     }
     case 'quitWithoutCoreShortcut': {
