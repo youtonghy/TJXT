@@ -2,8 +2,8 @@
  * User center backend management utilities
  */
 
-import { API_USER_AGENT } from './api-service'
 import backendSeedsRaw from '@renderer/config/user-center-backends.json'
+import { API_USER_AGENT } from './api-service'
 
 type BackendSeed = {
   id: string
@@ -126,7 +126,9 @@ export interface BackendTestResult {
  * 使用 V3 网关调用 guest/comm/config 测试延迟
  * 超时时间为 1 秒
  */
-export const testBackendLatency = async (backend: IUserCenterBackend): Promise<BackendTestResult> => {
+export const testBackendLatency = async (
+  backend: IUserCenterBackend
+): Promise<BackendTestResult> => {
   const startTime = Date.now()
   const baseUrl = normalizeBackendUrl(backend.url)
 
@@ -165,12 +167,34 @@ export const testBackendLatency = async (backend: IUserCenterBackend): Promise<B
   }
 }
 
+const runWithConcurrency = async <T, R>(
+  items: T[],
+  limit: number,
+  runner: (item: T, index: number) => Promise<R>
+): Promise<R[]> => {
+  if (items.length === 0) return []
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+  const workerCount = Math.min(Math.max(1, limit), items.length)
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const currentIndex = nextIndex
+      if (currentIndex >= items.length) return
+      nextIndex += 1
+      results[currentIndex] = await runner(items[currentIndex], currentIndex)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
 /**
  * Test latency for all backends
  */
-export const testAllBackendsLatency = async (backends: IUserCenterBackend[]): Promise<BackendTestResult[]> => {
-  const promises = backends.map(backend => testBackendLatency(backend))
-  return Promise.all(promises)
+export const testAllBackendsLatency = async (
+  backends: IUserCenterBackend[]
+): Promise<BackendTestResult[]> => {
+  return runWithConcurrency(backends, 3, (backend) => testBackendLatency(backend))
 }
 
 /**
@@ -180,7 +204,7 @@ export const getDefaultBackend = (appConfig?: IAppConfig): IUserCenterBackend =>
   const backends = getAllBackends(appConfig)
 
   // Find explicitly marked default backend
-  const defaultBackend = backends.find(backend => backend.isDefault)
+  const defaultBackend = backends.find((backend) => backend.isDefault)
   if (defaultBackend) {
     return defaultBackend
   }
@@ -206,7 +230,7 @@ export const getActiveBackend = (appConfig?: IAppConfig): IUserCenterBackend => 
     const selectedId = localStorage.getItem('userCenter.selectedBackendId')
     if (selectedId) {
       const all = getAllBackends(appConfig)
-      const picked = all.find(b => b.id === selectedId)
+      const picked = all.find((b) => b.id === selectedId)
       if (picked) return picked
       // If saved id no longer exists, fall back to default
     }
@@ -240,7 +264,7 @@ export const updateBackends = async (
   }))
 
   // Ensure at least one backend is marked as default
-  if (!normalized.some(backend => backend.isDefault) && normalized.length > 0) {
+  if (!normalized.some((backend) => backend.isDefault) && normalized.length > 0) {
     normalized[0].isDefault = true
   }
 
@@ -256,11 +280,11 @@ export const setDefaultBackend = async (
   appConfig?: IAppConfig
 ): Promise<void> => {
   const backends = getAllBackends(appConfig)
-  const updatedBackends = backends.map(backend => ({
+  const updatedBackends = backends.map((backend) => ({
     ...backend,
     isDefault: backend.id === backendId
   }))
-  
+
   await updateBackends(updatedBackends, patchAppConfig)
 }
 
@@ -278,13 +302,13 @@ export const addBackend = async (
     id: Date.now().toString(),
     isDefault: existingBackends.length === 0 || backend.isDefault
   }
-  
+
   // If this backend is set as default, unmark others
-  const updatedBackends = existingBackends.map(b => ({
+  const updatedBackends = existingBackends.map((b) => ({
     ...b,
     isDefault: newBackend.isDefault ? false : b.isDefault
   }))
-  
+
   updatedBackends.push(newBackend)
   await updateBackends(updatedBackends, patchAppConfig)
 }
@@ -298,14 +322,14 @@ export const removeBackend = async (
   appConfig?: IAppConfig
 ): Promise<void> => {
   const existingBackends = getAllBackends(appConfig)
-  const updatedBackends = existingBackends.filter(backend => backend.id !== backendId)
-  
+  const updatedBackends = existingBackends.filter((backend) => backend.id !== backendId)
+
   // If we removed the default backend, make the first remaining backend default
-  const removedBackend = existingBackends.find(backend => backend.id === backendId)
+  const removedBackend = existingBackends.find((backend) => backend.id === backendId)
   if (removedBackend?.isDefault && updatedBackends.length > 0) {
     updatedBackends[0].isDefault = true
   }
-  
+
   await updateBackends(updatedBackends, patchAppConfig)
 }
 
@@ -318,8 +342,8 @@ export const updateBackendPingResults = async (
   appConfig?: IAppConfig
 ): Promise<void> => {
   const existingBackends = getAllBackends(appConfig)
-  const updatedBackends = existingBackends.map(backend => {
-    const testResult = testResults.find(result => result.id === backend.id)
+  const updatedBackends = existingBackends.map((backend) => {
+    const testResult = testResults.find((result) => result.id === backend.id)
     if (testResult) {
       return {
         ...backend,
@@ -330,7 +354,7 @@ export const updateBackendPingResults = async (
     }
     return backend
   })
-  
+
   await updateBackends(updatedBackends, patchAppConfig)
 }
 
@@ -341,11 +365,11 @@ export const findOptimalBackend = (backends: IUserCenterBackend[]): IUserCenterB
   const backendsWithPing = backends.filter(
     (backend) => typeof backend.lastPing === 'number' && backend.isActive
   )
-  
+
   if (backendsWithPing.length === 0) {
     return null
   }
-  
+
   return backendsWithPing.reduce((optimal, current) => {
     const optimalPing = optimal.lastPing as number
     const currentPing = current.lastPing as number

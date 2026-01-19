@@ -1,6 +1,6 @@
 import { readFile, rm, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import path, { join, resolve, relative } from 'path'
 import { app } from 'electron'
 import i18next from 'i18next'
 import * as chromeRequest from '../utils/chromeRequest'
@@ -10,7 +10,15 @@ import { subStorePort } from '../resolve/server'
 import { mihomoUpgradeConfig } from '../core/mihomoApi'
 import { restartCore } from '../core/manager'
 import { addProfileUpdater, removeProfileUpdater } from '../core/profileUpdater'
-import { mihomoProfileWorkDir, mihomoWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
+import {
+  mihomoProfileWorkDir,
+  mihomoWorkDir,
+  profileConfigPath,
+  profilePath,
+  profilesDir,
+  overrideDir,
+  rulesDir
+} from '../utils/dirs'
 import { createLogger } from '../utils/logger'
 import { getAppConfig } from './app'
 import { getControledMihomoConfig } from './controledMihomo'
@@ -386,37 +394,60 @@ function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[a-zA-Z]:\\/.test(path)
 }
 
-export async function getFileStr(path: string): Promise<string> {
+function normalizeRuleBehavior(value: string): string | null {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return null
+  const allowed = new Set(['domain', 'ipcidr', 'classical'])
+  return allowed.has(normalized) ? normalized : null
+}
+
+function resolveAllowedPath(inputPath: string, baseDir: string): string | null {
+  const normalized = resolve(baseDir, inputPath)
+  const relativePath = relative(baseDir, normalized)
+  if (relativePath === '' || relativePath === '.') {
+    return baseDir
+  }
+  if (relativePath.startsWith('..') || relativePath.includes('..' + path.sep)) {
+    return null
+  }
+  return normalized
+}
+
+async function resolveSafeFilePath(inputPath: string): Promise<string> {
   const { diffWorkDir = false } = await getAppConfig()
   const { current } = await getProfileConfig()
-  if (isAbsolutePath(path)) {
-    return await readFile(path, 'utf-8')
-  } else {
-    return await readFile(
-      join(diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), path),
-      'utf-8'
-    )
+  const workDir = diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir()
+
+  if (isAbsolutePath(inputPath)) {
+    const allowedBases = [workDir, profilesDir(), overrideDir(), rulesDir()]
+    for (const base of allowedBases) {
+      const resolved = resolveAllowedPath(inputPath, base)
+      if (resolved) return resolved
+    }
+    throw new Error('Path is not allowed')
   }
+
+  const resolvedRelative = resolveAllowedPath(inputPath, workDir)
+  if (!resolvedRelative) {
+    throw new Error('Path is not allowed')
+  }
+  return resolvedRelative
+}
+
+export async function getFileStr(path: string): Promise<string> {
+  const safePath = await resolveSafeFilePath(path)
+  return await readFile(safePath, 'utf-8')
 }
 
 export async function setFileStr(path: string, content: string): Promise<void> {
-  const { diffWorkDir = false } = await getAppConfig()
-  const { current } = await getProfileConfig()
-  if (isAbsolutePath(path)) {
-    await writeFile(path, content, 'utf-8')
-  } else {
-    await writeFile(
-      join(diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), path),
-      content,
-      'utf-8'
-    )
-  }
+  const safePath = await resolveSafeFilePath(path)
+  await writeFile(safePath, content, 'utf-8')
 }
 
 export async function convertMrsRuleset(filePath: string, behavior: string): Promise<string> {
-  const { exec } = await import('child_process')
+  const { execFile } = await import('child_process')
   const { promisify } = await import('util')
-  const execAsync = promisify(exec)
+  const execFileAsync = promisify(execFile)
   const { mihomoCorePath } = await import('../utils/dirs')
   const { getAppConfig } = await import('./app')
   const { tmpdir } = await import('os')
@@ -425,13 +456,10 @@ export async function convertMrsRuleset(filePath: string, behavior: string): Pro
 
   const { core = 'mihomo' } = await getAppConfig()
   const corePath = mihomoCorePath(core)
-  const { diffWorkDir = false } = await getAppConfig()
-  const { current } = await getProfileConfig()
-  let fullPath: string
-  if (isAbsolutePath(filePath)) {
-    fullPath = filePath
-  } else {
-    fullPath = join(diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), filePath)
+  const safePath = await resolveSafeFilePath(filePath)
+  const safeBehavior = normalizeRuleBehavior(behavior)
+  if (!safeBehavior) {
+    throw new Error('Invalid ruleset behavior')
   }
 
   const tempFileName = `mrs-convert-${randomBytes(8).toString('hex')}.txt`
@@ -440,7 +468,7 @@ export async function convertMrsRuleset(filePath: string, behavior: string): Pro
   try {
     // 使用 mihomo convert-ruleset 命令转换 MRS 文件为 text 格式
     // 命令格式: mihomo convert-ruleset <behavior> <format> <source>
-    await execAsync(`"${corePath}" convert-ruleset ${behavior} mrs "${fullPath}" "${tempFilePath}"`)
+    await execFileAsync(corePath, ['convert-ruleset', safeBehavior, 'mrs', safePath, tempFilePath])
     const content = await readFile(tempFilePath, 'utf-8')
     await unlink(tempFilePath)
 

@@ -241,6 +241,7 @@ const Store: React.FC = () => {
 
   const cancelCurrentOrder = useCallback(async (): Promise<void> => {
     if (!tradeNo) return
+    const authHeader = auth.getAuthHeaderValue() || ''
     try {
       const res = await callV3Gateway(
         getBaseUrl(),
@@ -248,7 +249,7 @@ const Store: React.FC = () => {
         'POST',
         { trade_no: tradeNo },
         {
-          Authorization: auth.getToken() || '',
+          Authorization: authHeader,
           'User-Agent': API_USER_AGENT
         }
       )
@@ -268,6 +269,7 @@ const Store: React.FC = () => {
   const redeemGiftcard = async (): Promise<void> => {
     const code = redeemCode.trim()
     if (!code) return
+    const authHeader = auth.getAuthHeaderValue() || ''
     setRedeeming(true)
     setRedeemMsg(null)
     setRedeemOk(null)
@@ -278,7 +280,7 @@ const Store: React.FC = () => {
         'POST',
         { giftcard: code },
         {
-          Authorization: auth.getToken() || '',
+          Authorization: authHeader,
           'User-Agent': API_USER_AGENT
         }
       )
@@ -327,9 +329,10 @@ const Store: React.FC = () => {
     const fetchPlans = async (): Promise<void> => {
       setLoading(true)
       setError(null)
+      const authHeader = auth.getAuthHeaderValue() || ''
       try {
         const res = await callV3Gateway(getBaseUrl(), 'user/plan/fetch', 'GET', undefined, {
-          Authorization: auth.getToken() || '',
+          Authorization: authHeader,
           'User-Agent': API_USER_AGENT
         })
         if (res.status === 401) {
@@ -368,6 +371,7 @@ const Store: React.FC = () => {
 
   const validateCoupon = async (): Promise<void> => {
     if (!coupon.trim()) return setCouponMsg(null)
+    const authHeader = auth.getAuthHeaderValue() || ''
     try {
       const res = await callV3Gateway(
         getBaseUrl(),
@@ -375,7 +379,7 @@ const Store: React.FC = () => {
         'POST',
         { code: coupon.trim() },
         {
-          Authorization: auth.getToken() || '',
+          Authorization: authHeader,
           'User-Agent': API_USER_AGENT
         }
       )
@@ -409,6 +413,7 @@ const Store: React.FC = () => {
       }
     }
     setSubmitting(true)
+    const authHeader = auth.getAuthHeaderValue() || ''
     try {
       const params: Record<string, unknown> = {
         period: selectedPeriod,
@@ -417,7 +422,7 @@ const Store: React.FC = () => {
       if (coupon.trim()) params.coupon = coupon.trim()
 
       const res = await callV3Gateway(getBaseUrl(), 'user/order/save', 'POST', params, {
-        Authorization: auth.getToken() || '',
+        Authorization: authHeader,
         'User-Agent': API_USER_AGENT
       })
       if (!res.ok) {
@@ -444,8 +449,9 @@ const Store: React.FC = () => {
 
   const loadPaymentData = async (tn: string): Promise<void> => {
     try {
+      const authHeader = auth.getAuthHeaderValue() || ''
       const headers = {
-        Authorization: auth.getToken() || '',
+        Authorization: authHeader,
         'User-Agent': API_USER_AGENT
       }
       const [detailRes, pmRes] = await Promise.all([
@@ -471,12 +477,13 @@ const Store: React.FC = () => {
   const doCheckout = async (): Promise<void> => {
     if (!tradeNo) return
     setCheckingOut(true)
+    const authHeader = auth.getAuthHeaderValue() || ''
     try {
       const params: Record<string, unknown> = { trade_no: tradeNo }
       if (methodId != null) params.payment_id = methodId
 
       const res = await callV3Gateway(getBaseUrl(), 'user/order/checkout', 'POST', params, {
-        Authorization: auth.getToken() || '',
+        Authorization: authHeader,
         'User-Agent': API_USER_AGENT
       })
       if (res.status >= 500) {

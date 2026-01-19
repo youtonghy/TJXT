@@ -81,14 +81,20 @@ import { triggerSysProxy } from '../sys/sysproxy'
 import { checkUpdate, downloadAndInstallUpdate } from '../resolve/autoUpdater'
 import {
   getFilePath,
+  selectTextFile,
   openFile,
   openUWPTool,
-  readTextFile,
   resetAppConfig,
   setNativeTheme,
   setupFirewall
 } from '../sys/misc'
 import { getRuntimeConfig, getRuntimeConfigStr } from '../core/factory'
+import {
+  isSecureStoreAvailable,
+  secureStoreDelete,
+  secureStoreGet,
+  secureStoreSet
+} from './secure-store'
 import {
   listWebdavBackups,
   webdavBackup,
@@ -288,7 +294,11 @@ const asyncHandlers: Record<string, AsyncFn> = {
   getSmartOverrideContent,
   getRuleStr,
   setRuleStr,
-  readTextFile,
+  secureStoreGet,
+  secureStoreSet,
+  secureStoreDelete,
+  secureStoreAvailable: () => Promise.resolve(isSecureStoreAvailable()),
+  selectTextFile,
   // Core
   restartCore,
   startMonitor,

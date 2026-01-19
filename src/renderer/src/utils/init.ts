@@ -14,10 +14,13 @@ import { getPlatform, getVersion } from './ipc'
 //   originWarn.call(console, args)
 // }
 
+import { initUserAuth } from './user-auth'
+
 export let platform: NodeJS.Platform
 export let version: string
 
 export async function init(): Promise<void> {
   platform = await getPlatform()
   version = await getVersion()
+  await initUserAuth()
 }

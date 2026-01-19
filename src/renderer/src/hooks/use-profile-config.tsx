@@ -16,7 +16,7 @@ import {
   updateProfileItem as update,
   changeCurrentProfile as change
 } from '@renderer/utils/ipc'
-import { createUserAuthUtils } from '@renderer/utils/user-auth'
+import { createUserAuthUtils, getCachedTokenData } from '@renderer/utils/user-auth'
 import { useAppConfig } from './use-app-config'
 
 interface ProfileConfigContextType {
@@ -44,11 +44,10 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   const userSubPrevUrlRef = useRef<string | null>(null)
   const userSubUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Fetch user subscription URL when login state changes
   useEffect(() => {
     const fetchUserSubscriptionUrl = async () => {
       const userAuthUtils = createUserAuthUtils(appConfig)
-      const isLoggedIn = userAuthUtils.isLoggedIn()
+      const isLoggedIn = Boolean(getCachedTokenData())
 
       if (isLoggedIn) {
         try {
@@ -66,12 +65,10 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     fetchUserSubscriptionUrl()
   }, [appConfig])
 
-  // Enhanced profile config that includes user subscription when logged in
   const profileConfig = useMemo(() => {
     if (!rawProfileConfig) return rawProfileConfig
 
-    const userAuthUtils = createUserAuthUtils(appConfig)
-    const isLoggedIn = userAuthUtils.isLoggedIn()
+    const isLoggedIn = Boolean(getCachedTokenData())
 
     const existingUserSubscription = rawProfileConfig.items.find(
       (item) => item.id === USER_SUBSCRIPTION_ID
@@ -86,7 +83,6 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     const existingInterval = Number(existingUserSubscription?.interval ?? 0)
     const resolvedInterval = isLoggedIn ? (existingInterval > 0 ? existingInterval : 60) : 0
 
-    // Always create user subscription item, but with different URLs based on login state
     const userSubscriptionItem: IProfileItem = {
       id: USER_SUBSCRIPTION_ID,
       type: 'remote',
@@ -102,25 +98,21 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
       extra: isLoggedIn ? existingUserSubscription?.extra : undefined
     }
 
-    // Check if user subscription already exists
     const hasUserSubscription = rawProfileConfig.items.some(
       (item) => item.id === USER_SUBSCRIPTION_ID
     )
 
-    let items = [...rawProfileConfig.items]
+    const items = [...rawProfileConfig.items]
 
     if (!hasUserSubscription) {
-      // Add user subscription at the beginning of the list
       items.unshift(userSubscriptionItem)
     } else {
-      // Update existing user subscription with current URL and settings
       const index = items.findIndex((item) => item.id === USER_SUBSCRIPTION_ID)
       if (index !== -1) {
         items[index] = { ...items[index], ...userSubscriptionItem, updated: Date.now() }
       }
     }
 
-    // Auto-select user subscription if no profile is currently selected and user is logged in
     let current = rawProfileConfig.current
     if (!current && isLoggedIn && userSubscriptionUrl && items.length > 0) {
       current = USER_SUBSCRIPTION_ID
@@ -208,7 +200,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const refreshUserSubscription = async (): Promise<void> => {
     const userAuthUtils = createUserAuthUtils(appConfig)
-    const isLoggedIn = userAuthUtils.isLoggedIn()
+    const isLoggedIn = Boolean(getCachedTokenData())
 
     if (isLoggedIn) {
       try {
@@ -225,8 +217,7 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
   // Auto-update "用户订阅" 2s after a valid URL is added/changed
   useEffect(() => {
-    const userAuthUtils = createUserAuthUtils(appConfig)
-    const isLoggedIn = userAuthUtils.isLoggedIn()
+    const isLoggedIn = Boolean(getCachedTokenData())
 
     // Clear previous scheduled update if URL changes
     if (userSubUpdateTimerRef.current) {
@@ -282,14 +273,14 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     }
   }, [userSubscriptionUrl, appConfig, mutateProfileConfig, rawProfileConfig])
 
-  React.useEffect(() => {
+  useEffect(() => {
     window.electron.ipcRenderer.on('profileConfigUpdated', () => {
       mutateProfileConfig()
     })
     return (): void => {
       window.electron.ipcRenderer.removeAllListeners('profileConfigUpdated')
     }
-  }, [])
+  }, [mutateProfileConfig])
 
   return (
     <ProfileConfigContext.Provider

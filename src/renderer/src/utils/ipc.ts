@@ -77,8 +77,12 @@ interface IpcApi {
   getRuntimeConfigStr: () => Promise<string>
   getRuleStr: (id: string) => Promise<string>
   setRuleStr: (id: string, str: string) => Promise<void>
+  secureStoreGet: (key: string) => Promise<string | null>
+  secureStoreSet: (key: string, value: string) => Promise<void>
+  secureStoreDelete: (key: string) => Promise<void>
+  secureStoreAvailable: () => Promise<boolean>
+  selectTextFile: (ext: string[]) => Promise<{ fileName: string; content: string } | null>
   getFilePath: (ext: string[]) => Promise<string[] | undefined>
-  readTextFile: (filePath: string) => Promise<string>
   openFile: (type: 'profile' | 'override', id: string, ext?: 'yaml' | 'js') => Promise<void>
   // Core
   restartCore: () => Promise<void>
@@ -231,8 +235,12 @@ export const {
   getRuntimeConfigStr,
   getRuleStr,
   setRuleStr,
+  secureStoreGet,
+  secureStoreSet,
+  secureStoreDelete,
+  secureStoreAvailable,
+  selectTextFile,
   getFilePath,
-  readTextFile,
   openFile,
   // Core
   restartCore,

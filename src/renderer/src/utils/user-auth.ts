@@ -12,8 +12,141 @@ export interface UserTokenData {
 /**
  * Create user auth utils with app config
  */
-import { getActiveBackend, callV3Gateway, normalizeBackendUrl } from '@renderer/utils/user-center-backend'
+import {
+  getActiveBackend,
+  callV3Gateway,
+  normalizeBackendUrl
+} from '@renderer/utils/user-center-backend'
 import { API_USER_AGENT } from '@renderer/utils/api-service'
+import { secureStoreDelete, secureStoreGet, secureStoreSet } from '@renderer/utils/ipc'
+
+const TOKEN_STORAGE_KEY = 'userTokenData'
+const LEGACY_TOKEN_KEY = 'userToken'
+const LEGACY_TOKEN_DATA_KEY = 'userTokenData'
+const DEFAULT_EXPIRE_DAYS = 7
+
+let tokenCache: UserTokenData | null = null
+let tokenLoading: Promise<void> | null = null
+
+const normalizeTokenType = (value?: string | null): string | null => {
+  if (!value) return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+export const formatAuthToken = (token: string, tokenType?: string | null): string => {
+  if (/\s/.test(token)) return token
+  const normalizedType = normalizeTokenType(tokenType)
+  if (!normalizedType) return token
+  if (normalizedType.toLowerCase() === 'bearer') return `Bearer ${token}`
+  return `${normalizedType} ${token}`
+}
+
+const parseTokenData = (raw: string | null): UserTokenData | null => {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<UserTokenData>
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.token !== 'string' || !parsed.token.trim()) return null
+    if (typeof parsed.expiresAt !== 'number' || typeof parsed.createdAt !== 'number') return null
+    return {
+      token: parsed.token,
+      expiresAt: parsed.expiresAt,
+      createdAt: parsed.createdAt,
+      tokenType: normalizeTokenType(parsed.tokenType) || undefined
+    }
+  } catch {
+    return null
+  }
+}
+
+export const getCachedTokenData = (): UserTokenData | null => tokenCache
+
+const isTokenExpired = (tokenData: UserTokenData): boolean => {
+  return Boolean(tokenData.expiresAt && Date.now() > tokenData.expiresAt)
+}
+
+const getTokenData = (): UserTokenData | null => {
+  if (!tokenCache) return null
+  if (isTokenExpired(tokenCache)) {
+    tokenCache = null
+    void clearUserToken().catch((error) => console.error(error))
+    return null
+  }
+  return tokenCache
+}
+
+export async function initUserAuth(): Promise<void> {
+  if (tokenLoading) {
+    await tokenLoading
+    return
+  }
+
+  tokenLoading = (async () => {
+    let data: UserTokenData | null = null
+    const stored = await secureStoreGet(TOKEN_STORAGE_KEY)
+    data = parseTokenData(stored)
+
+    if (!data) {
+      const legacyData = localStorage.getItem(LEGACY_TOKEN_DATA_KEY)
+      const legacyToken = localStorage.getItem(LEGACY_TOKEN_KEY)
+      data = parseTokenData(legacyData)
+      if (!data && legacyToken) {
+        const now = Date.now()
+        data = {
+          token: legacyToken,
+          expiresAt: now + DEFAULT_EXPIRE_DAYS * 24 * 60 * 60 * 1000,
+          createdAt: now
+        }
+      }
+      if (data) {
+        await secureStoreSet(TOKEN_STORAGE_KEY, JSON.stringify(data))
+      }
+      localStorage.removeItem(LEGACY_TOKEN_KEY)
+      localStorage.removeItem(LEGACY_TOKEN_DATA_KEY)
+    }
+
+    if (data && isTokenExpired(data)) {
+      await secureStoreDelete(TOKEN_STORAGE_KEY)
+      data = null
+    }
+
+    tokenCache = data
+  })()
+
+  await tokenLoading
+  tokenLoading = null
+}
+
+export async function setUserToken(
+  token: string,
+  expiresInDays: number = DEFAULT_EXPIRE_DAYS,
+  tokenType?: string | null
+): Promise<void> {
+  const normalizedType = normalizeTokenType(tokenType)
+  const now = Date.now()
+  const expiresAt = now + expiresInDays * 24 * 60 * 60 * 1000
+
+  const tokenData: UserTokenData = {
+    token,
+    expiresAt,
+    createdAt: now,
+    ...(normalizedType ? { tokenType: normalizedType } : {})
+  }
+
+  tokenCache = tokenData
+  await secureStoreSet(TOKEN_STORAGE_KEY, JSON.stringify(tokenData))
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_TOKEN_DATA_KEY)
+}
+
+export async function clearUserToken(): Promise<void> {
+  tokenCache = null
+  await secureStoreDelete(TOKEN_STORAGE_KEY)
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_TOKEN_DATA_KEY)
+  localStorage.removeItem('userEmail')
+}
 
 export const createUserAuthUtils = (appConfig?: IAppConfig) => {
   const debugEnabled = (): boolean => {
@@ -43,91 +176,31 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
       return raw
     }
   }
-  const normalizeTokenType = (value?: string | null): string | null => {
-    if (!value) return null
-    const trimmed = value.trim()
-    return trimmed || null
-  }
-
-  const formatAuthToken = (token: string, tokenType?: string | null): string => {
-    if (/\s/.test(token)) return token
-    const normalizedType = normalizeTokenType(tokenType)
-    if (!normalizedType) return token
-    if (normalizedType.toLowerCase() === 'bearer') return token
-    return `${normalizedType} ${token}`
-  }
 
   const utils = {
-    /**
-     * Check if user is currently logged in (has valid token)
-     */
     isLoggedIn: (): boolean => {
-      const token = localStorage.getItem('userToken')
-      const tokenDataStr = localStorage.getItem('userTokenData')
-      
-      if (!token || !tokenDataStr) {
-        return false
-      }
-      
-      try {
-        const tokenData: UserTokenData = JSON.parse(tokenDataStr)
-        const now = Date.now()
-        
-        // Check if token is expired
-        if (tokenData.expiresAt && now > tokenData.expiresAt) {
-          // Token expired, clean up
-          utils.clearToken()
-          return false
-        }
-        
-        return true
-      } catch {
-        // Data format error, clean up
-        utils.clearToken()
-        return false
-      }
+      const tokenData = getTokenData()
+      return Boolean(tokenData)
     },
 
-    /**
-     * Get current auth token if valid
-     */
     getToken: (): string | null => {
-      if (!utils.isLoggedIn()) {
-        return null
-      }
-      return localStorage.getItem('userToken')
+      const tokenData = getTokenData()
+      return tokenData?.token ?? null
     },
 
-    /**
-     * Get token type if present
-     */
     getTokenType: (): string | null => {
-      const tokenDataStr = localStorage.getItem('userTokenData')
-      if (!tokenDataStr) return null
-      try {
-        const tokenData: UserTokenData = JSON.parse(tokenDataStr)
-        return normalizeTokenType(tokenData.tokenType)
-      } catch {
-        return null
-      }
+      const tokenData = getTokenData()
+      return normalizeTokenType(tokenData?.tokenType)
     },
 
-    /**
-     * Build Authorization header value with token type when available
-     */
     getAuthHeaderValue: (): string | null => {
-      const token = utils.getToken()
-      if (!token) return null
-      return formatAuthToken(token, utils.getTokenType())
+      const tokenData = getTokenData()
+      if (!tokenData) return null
+      return formatAuthToken(tokenData.token, tokenData.tokenType)
     },
 
-    /**
-     * Clear stored auth token
-     */
     clearToken: (): void => {
-      localStorage.removeItem('userToken')
-      localStorage.removeItem('userTokenData')
-      localStorage.removeItem('userEmail')
+      void clearUserToken()
     },
 
     /**
@@ -135,7 +208,7 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
      * Uses the same method as user-center.tsx
      */
     getUserSubscriptionUrl: async (): Promise<string | null> => {
-      const authHeader = utils.getAuthHeaderValue()
+      const authHeader = await utils.getAuthHeaderValue()
       if (!authHeader) {
         logDebug('getUserSubscriptionUrl abort (missing auth)')
         return null
@@ -145,16 +218,10 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
       logDebug('getUserSubscriptionUrl start', { baseUrl })
 
       try {
-        const response = await callV3Gateway(
-          baseUrl,
-          'user/getSubscribe',
-          'GET',
-          undefined,
-          {
-            'Authorization': authHeader,
-            'User-Agent': API_USER_AGENT
-          }
-        )
+        const response = await callV3Gateway(baseUrl, 'user/getSubscribe', 'GET', undefined, {
+          Authorization: authHeader,
+          'User-Agent': API_USER_AGENT
+        })
 
         logDebug('getUserSubscriptionUrl response', { status: response.status, ok: response.ok })
         if (response.status === 401) {
@@ -193,7 +260,9 @@ export const createUserAuthUtils = (appConfig?: IAppConfig) => {
           return normalized
         }
 
-        logDebug('getUserSubscriptionUrl missing url', { keys: payload ? Object.keys(payload) : null })
+        logDebug('getUserSubscriptionUrl missing url', {
+          keys: payload ? Object.keys(payload) : null
+        })
         return null
       } catch (error) {
         console.error('Error fetching subscription URL:', error)

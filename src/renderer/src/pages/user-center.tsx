@@ -7,6 +7,13 @@
 // React 核心
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  clearUserToken,
+  formatAuthToken as formatStoredAuthToken,
+  getCachedTokenData,
+  setUserToken
+} from '@renderer/utils/user-auth'
+import DOMPurify from 'dompurify'
 
 // UI 组件
 import {
@@ -90,6 +97,9 @@ interface NetworkStatus {
 
 const WEB_LOGIN_STATE_KEY = 'userCenter.webLoginState'
 const WEB_LOGIN_REDIRECT_URI = 'mihomo://user-center-login'
+const TELEGRAM_POLLING_TIMEOUT_MS = 90 * 1000
+const TELEGRAM_POLLING_BACKOFF_MS = [5000, 10000, 15000, 20000]
+const BACKEND_AUTO_TEST_BACKOFF_MS = [5000, 10000, 15000, 20000]
 
 const UserCenter: React.FC = () => {
   const { t } = useTranslation()
@@ -200,6 +210,8 @@ const UserCenter: React.FC = () => {
     'idle' | 'pending' | 'approved' | 'rejected' | 'expired'
   >('idle')
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const telegramPollingStartedAtRef = useRef<number | null>(null)
+  const telegramPollingAttemptRef = useRef(0)
 
   // 加载状态
   const [loading, setLoading] = useState<LoadingState>({
@@ -222,6 +234,7 @@ const UserCenter: React.FC = () => {
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const backendsRef = useRef<IUserCenterBackend[]>([])
   const hasStartedAutoTest = useRef<boolean>(false)
+  const backendAutoTestAttemptRef = useRef(0)
 
   // 网络状态 - 默认假设在线，通过实际 API 请求结果来判断
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
@@ -244,14 +257,6 @@ const UserCenter: React.FC = () => {
     if (!value) return null
     const trimmed = value.trim()
     return trimmed || null
-  }
-
-  const formatAuthToken = (token: string, tokenType?: string | null): string => {
-    if (/\s/.test(token)) return token
-    const normalizedType = normalizeTokenType(tokenType)
-    if (!normalizedType) return token
-    if (normalizedType.toLowerCase() === 'bearer') return token
-    return `${normalizedType} ${token}`
   }
 
   type AuthPayload = { token: string; tokenType?: string | null }
@@ -291,116 +296,54 @@ const UserCenter: React.FC = () => {
 
   // Token管理工具函数
   const tokenManager = {
-    // 设置Token（带过期时间）
     setToken: (token: string, expiresInDays: number = 7, tokenType?: string | null) => {
       const normalizedType = normalizeTokenType(tokenType)
-      const now = new Date()
-      const expiresAt = now.getTime() + expiresInDays * 24 * 60 * 60 * 1000
-
-      const tokenData = {
-        token,
-        expiresAt,
-        createdAt: now.getTime(),
-        ...(normalizedType ? { tokenType: normalizedType } : {})
-      }
-
-      localStorage.setItem('userToken', token)
-      localStorage.setItem('userTokenData', JSON.stringify(tokenData))
+      void setUserToken(token, expiresInDays, normalizedType)
       logDebug('token stored', {
         token: maskToken(token),
-        tokenType: normalizedType,
-        expiresAt
+        tokenType: normalizedType
       })
     },
 
-    // 获取Token
     getToken: (): string | null => {
-      const token = localStorage.getItem('userToken')
-      const tokenDataStr = localStorage.getItem('userTokenData')
-
-      if (!token || !tokenDataStr) {
-        return null
-      }
-
-      try {
-        const tokenData = JSON.parse(tokenDataStr)
-        const now = Date.now()
-
-        // 检查是否过期
-        if (tokenData.expiresAt && now > tokenData.expiresAt) {
-          tokenManager.clearToken()
-          return null
-        }
-
-        return token
-      } catch {
-        // 数据格式错误，清除token
-        tokenManager.clearToken()
-        return null
-      }
+      return getCachedTokenData()?.token ?? null
     },
 
-    // 获取 Token 类型
     getTokenType: (): string | null => {
-      const tokenDataStr = localStorage.getItem('userTokenData')
-      if (!tokenDataStr) return null
-      try {
-        const tokenData = JSON.parse(tokenDataStr)
-        return normalizeTokenType(tokenData.tokenType)
-      } catch {
-        return null
-      }
+      return normalizeTokenType(getCachedTokenData()?.tokenType)
     },
 
-    // 获取 Authorization header 值
     getAuthHeaderValue: (): string | null => {
-      const token = tokenManager.getToken()
-      if (!token) return null
-      const headerValue = formatAuthToken(token, tokenManager.getTokenType())
-      logDebug('auth header prepared', { token: maskToken(token), header: maskToken(headerValue) })
+      const tokenData = getCachedTokenData()
+      if (!tokenData) return null
+      const headerValue = formatStoredAuthToken(tokenData.token, tokenData.tokenType)
+      logDebug('auth header prepared', {
+        token: maskToken(tokenData.token),
+        header: maskToken(headerValue)
+      })
       return headerValue
     },
 
-    // 清除Token
     clearToken: () => {
-      localStorage.removeItem('userToken')
-      localStorage.removeItem('userTokenData')
-      localStorage.removeItem('userEmail') // 清除记住的邮箱
+      void clearUserToken()
     },
 
-    // 检查Token是否即将过期（24小时内）
     isTokenExpiringSoon: (): boolean => {
-      const tokenDataStr = localStorage.getItem('userTokenData')
-      if (!tokenDataStr) return false
-
-      try {
-        const tokenData = JSON.parse(tokenDataStr)
-        const now = Date.now()
-        const oneDay = 24 * 60 * 60 * 1000
-
-        return tokenData.expiresAt && tokenData.expiresAt - now < oneDay
-      } catch {
-        return false
-      }
+      const tokenData = getCachedTokenData()
+      if (!tokenData) return false
+      const now = Date.now()
+      const oneDay = 24 * 60 * 60 * 1000
+      return Boolean(tokenData.expiresAt && tokenData.expiresAt - now < oneDay)
     },
 
-    // 获取Token剩余天数
     getTokenRemainingDays: (): number => {
-      const tokenDataStr = localStorage.getItem('userTokenData')
-      if (!tokenDataStr) return 0
-
-      try {
-        const tokenData = JSON.parse(tokenDataStr)
-        const now = Date.now()
-
-        if (!tokenData.expiresAt || now > tokenData.expiresAt) {
-          return 0
-        }
-
-        return Math.ceil((tokenData.expiresAt - now) / (24 * 60 * 60 * 1000))
-      } catch {
+      const tokenData = getCachedTokenData()
+      if (!tokenData?.expiresAt) return 0
+      const now = Date.now()
+      if (now > tokenData.expiresAt) {
         return 0
       }
+      return Math.ceil((tokenData.expiresAt - now) / (24 * 60 * 60 * 1000))
     }
   }
 
@@ -1034,8 +977,10 @@ const UserCenter: React.FC = () => {
   const cancelTelegramLogin = () => {
     setTelegramToken(null)
     setTelegramStatus('idle')
+    telegramPollingStartedAtRef.current = null
+    telegramPollingAttemptRef.current = 0
     if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current)
+      clearTimeout(pollingIntervalRef.current)
       pollingIntervalRef.current = null
     }
   }
@@ -1044,15 +989,52 @@ const UserCenter: React.FC = () => {
   useEffect(() => {
     if (!telegramToken || telegramStatus !== 'pending') {
       if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
+        clearTimeout(pollingIntervalRef.current)
         pollingIntervalRef.current = null
       }
+      telegramPollingStartedAtRef.current = null
+      telegramPollingAttemptRef.current = 0
       return
     }
 
     const baseUrl = getNormalizedBaseUrl()
+    let cancelled = false
+
+    const scheduleNext = (delayMs: number) => {
+      if (pollingIntervalRef.current) {
+        clearTimeout(pollingIntervalRef.current)
+      }
+      pollingIntervalRef.current = setTimeout(() => {
+        void checkStatus()
+      }, delayMs)
+    }
+
+    const resolveDelay = (attempt: number) => {
+      if (attempt < TELEGRAM_POLLING_BACKOFF_MS.length) {
+        return TELEGRAM_POLLING_BACKOFF_MS[attempt]
+      }
+      return TELEGRAM_POLLING_BACKOFF_MS[TELEGRAM_POLLING_BACKOFF_MS.length - 1]
+    }
+
+    const finishPolling = (status: 'rejected' | 'expired') => {
+      setTelegramStatus(status)
+      setErrors((prev) => ({
+        ...prev,
+        userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期'
+      }))
+      setTelegramToken(null)
+      telegramPollingStartedAtRef.current = null
+      telegramPollingAttemptRef.current = 0
+    }
 
     const checkStatus = async () => {
+      if (cancelled) return
+      const startedAt = telegramPollingStartedAtRef.current
+      if (startedAt && Date.now() - startedAt >= TELEGRAM_POLLING_TIMEOUT_MS) {
+        finishPolling('expired')
+        return
+      }
+
       try {
         const response = await callV3Gateway(
           baseUrl,
@@ -1070,30 +1052,41 @@ const UserCenter: React.FC = () => {
 
           if (status === 'approved' && verify_code) {
             setTelegramStatus('approved')
-            // Authenticate with verify code
+            telegramPollingStartedAtRef.current = null
+            telegramPollingAttemptRef.current = 0
             await performTokenLogin(verify_code)
-          } else if (status === 'rejected' || status === 'expired') {
-            setTelegramStatus(status)
-            setErrors((prev) => ({
-              ...prev,
-              userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期'
-            }))
-            setTelegramToken(null)
+            return
+          }
+
+          if (status === 'rejected' || status === 'expired') {
+            finishPolling(status)
+            return
           }
         }
       } catch (error) {
         console.error('Polling error:', error)
       }
+
+      const nextAttempt = telegramPollingAttemptRef.current + 1
+      telegramPollingAttemptRef.current = nextAttempt
+      scheduleNext(resolveDelay(nextAttempt - 1))
     }
 
-    pollingIntervalRef.current = setInterval(checkStatus, 2000) // Poll every 2 seconds
+    if (!telegramPollingStartedAtRef.current) {
+      telegramPollingStartedAtRef.current = Date.now()
+      telegramPollingAttemptRef.current = 0
+    }
+
+    scheduleNext(0)
 
     return () => {
+      cancelled = true
       if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
+        clearTimeout(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-  }, [telegramToken, telegramStatus, activeBackend])
+  }, [telegramToken, telegramStatus, activeBackend, getNormalizedBaseUrl])
 
   // Token Login (Final Step)（使用 V3 网关）
   const performTokenLogin = async (verifyCode: string) => {
@@ -1213,8 +1206,10 @@ const UserCenter: React.FC = () => {
     // Reset Telegram State
     setTelegramToken(null)
     setTelegramStatus('idle')
+    telegramPollingStartedAtRef.current = null
+    telegramPollingAttemptRef.current = 0
     if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current)
+      clearTimeout(pollingIntervalRef.current)
       pollingIntervalRef.current = null
     }
 
@@ -1278,14 +1273,6 @@ rules:
   - MATCH,DIRECT
 `
           )
-
-          // 强制删除AppData中的用户订阅文件
-          try {
-            await window.electron.ipcRenderer.invoke('removeProfileFile', USER_SUBSCRIPTION_ID)
-            console.log('AppData中的用户订阅文件已删除')
-          } catch (fileError) {
-            console.warn('删除AppData中的用户订阅文件失败:', fileError)
-          }
 
           console.log('用户订阅内容已清空为默认配置')
         } catch (error) {
@@ -1352,18 +1339,41 @@ rules:
 
           // 只有所有后端都不可用时，才启动定时刷新
           if (!hasActiveBackend) {
-            intervalRef.current = setInterval(async () => {
-              const latestBackends = backendsRef.current
-              if (latestBackends.length >= 1) {
-                const retryResults = await testAllBackends()
-                // 如果有后端可用了，停止刷新
-                const nowHasActive = retryResults?.some((r) => r.isActive) ?? false
-                if (nowHasActive && intervalRef.current) {
-                  clearInterval(intervalRef.current)
-                  intervalRef.current = null
-                }
+            const resolveDelay = (attempt: number) => {
+              if (attempt < BACKEND_AUTO_TEST_BACKOFF_MS.length) {
+                return BACKEND_AUTO_TEST_BACKOFF_MS[attempt]
               }
-            }, 5000) // 所有后端不可用时每5秒刷新
+              return BACKEND_AUTO_TEST_BACKOFF_MS[BACKEND_AUTO_TEST_BACKOFF_MS.length - 1]
+            }
+
+            const scheduleRetry = (delayMs: number) => {
+              if (intervalRef.current) {
+                clearTimeout(intervalRef.current)
+              }
+              intervalRef.current = setTimeout(async () => {
+                const latestBackends = backendsRef.current
+                if (latestBackends.length >= 1) {
+                  const retryResults = await testAllBackends()
+                  // 如果有后端可用了，停止刷新
+                  const nowHasActive = retryResults?.some((r) => r.isActive) ?? false
+                  if (nowHasActive) {
+                    if (intervalRef.current) {
+                      clearTimeout(intervalRef.current)
+                      intervalRef.current = null
+                    }
+                    backendAutoTestAttemptRef.current = 0
+                    return
+                  }
+                }
+
+                const nextAttempt = backendAutoTestAttemptRef.current + 1
+                backendAutoTestAttemptRef.current = nextAttempt
+                scheduleRetry(resolveDelay(nextAttempt - 1))
+              }, delayMs)
+            }
+
+            backendAutoTestAttemptRef.current = 0
+            scheduleRetry(resolveDelay(0))
           }
         }
       }, 500)
@@ -1371,7 +1381,7 @@ rules:
       return () => {
         clearTimeout(initialTimer)
         if (intervalRef.current) {
-          clearInterval(intervalRef.current)
+          clearTimeout(intervalRef.current)
           intervalRef.current = null
         }
       }
@@ -1380,8 +1390,9 @@ rules:
     // Reset when user logs in
     if (isLoggedIn) {
       hasStartedAutoTest.current = false
+      backendAutoTestAttemptRef.current = 0
       if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+        clearTimeout(intervalRef.current)
         intervalRef.current = null
       }
     }
@@ -2273,7 +2284,31 @@ rules:
                 <div
                   className="whitespace-pre-wrap leading-relaxed text-foreground"
                   dangerouslySetInnerHTML={{
-                    __html: selectedAnnouncement?.content?.replace(/\n/g, '<br>') || ''
+                    __html: DOMPurify.sanitize(
+                      selectedAnnouncement?.content?.replace(/\n/g, '<br>') || '',
+                      {
+                        ALLOWED_TAGS: [
+                          'a',
+                          'abbr',
+                          'b',
+                          'blockquote',
+                          'br',
+                          'code',
+                          'em',
+                          'i',
+                          'img',
+                          'li',
+                          'ol',
+                          'p',
+                          'pre',
+                          'strong',
+                          'ul',
+                          'span'
+                        ],
+                        ALLOWED_ATTR: ['href', 'title', 'target', 'rel', 'src', 'alt'],
+                        ALLOWED_URI_REGEXP: /^(?:https?|mailto|tel|data:image)\b/i
+                      }
+                    )
                   }}
                 />
               </div>

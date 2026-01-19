@@ -15,7 +15,7 @@ import { toast } from '@renderer/components/base/toast'
 import ProfileItem from '@renderer/components/profiles/profile-item'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
-import { getFilePath, readTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
+import { selectTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
 import type { KeyboardEvent } from 'react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MdContentPaste } from 'react-icons/md'
@@ -194,8 +194,7 @@ const Profiles: React.FC = () => {
         const file = event.dataTransfer.files[0]
         if (file.name.endsWith('.yml') || file.name.endsWith('.yaml')) {
           try {
-            const path = window.api.webUtils.getPathForFile(file)
-            const content = await readTextFile(path)
+            const content = await file.text()
             await addProfileItemRef.current({ name: file.name, type: 'local', file: content })
           } catch (e) {
             toast.error(String(e))
@@ -396,11 +395,13 @@ const Profiles: React.FC = () => {
                 onAction={async (key) => {
                   if (key === 'open') {
                     try {
-                      const files = await getFilePath(['yml', 'yaml'])
-                      if (files?.length) {
-                        const content = await readTextFile(files[0])
-                        const fileName = files[0].split('/').pop()?.split('\\').pop()
-                        await addProfileItem({ name: fileName, type: 'local', file: content })
+                      const selected = await selectTextFile(['yml', 'yaml'])
+                      if (selected) {
+                        await addProfileItem({
+                          name: selected.fileName,
+                          type: 'local',
+                          file: selected.content
+                        })
                       }
                     } catch (e) {
                       toast.error(String(e))

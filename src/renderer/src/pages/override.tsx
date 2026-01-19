@@ -9,7 +9,7 @@ import {
 } from '@heroui/react'
 import BasePage from '@renderer/components/base/base-page'
 import { toast } from '@renderer/components/base/toast'
-import { getFilePath, readTextFile } from '@renderer/utils/ipc'
+import { selectTextFile } from '@renderer/utils/ipc'
 import { useEffect, useRef, useState } from 'react'
 import { MdContentPaste } from 'react-icons/md'
 import {
@@ -106,8 +106,8 @@ const Override: React.FC = () => {
       if (event.dataTransfer?.files) {
         const file = event.dataTransfer.files[0]
         if (file.name.endsWith('.js') || file.name.endsWith('.yaml')) {
-          const content = await readTextFile((file as File & { path: string }).path)
           try {
+            const content = await file.text()
             await addOverrideItemRef.current({
               name: file.name,
               type: 'local',
@@ -214,15 +214,13 @@ const Override: React.FC = () => {
               onAction={async (key) => {
                 if (key === 'open') {
                   try {
-                    const files = await getFilePath(['js', 'yaml'])
-                    if (files?.length) {
-                      const content = await readTextFile(files[0])
-                      const fileName = files[0].split('/').pop()?.split('\\').pop()
+                    const selected = await selectTextFile(['js', 'yaml'])
+                    if (selected) {
                       await addOverrideItem({
-                        name: fileName,
+                        name: selected.fileName,
                         type: 'local',
-                        file: content,
-                        ext: fileName?.endsWith('.js') ? 'js' : 'yaml'
+                        file: selected.content,
+                        ext: selected.fileName.endsWith('.js') ? 'js' : 'yaml'
                       })
                     }
                   } catch (e) {

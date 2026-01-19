@@ -1,5 +1,4 @@
 import { exec, execFile, spawn } from 'child_process'
-import { readFile } from 'fs/promises'
 import path from 'path'
 import { promisify } from 'util'
 import { app, dialog, nativeTheme, shell } from 'electron'
@@ -21,8 +20,20 @@ export function getFilePath(ext: string[]): string[] | undefined {
   })
 }
 
-export async function readTextFile(filePath: string): Promise<string> {
-  return await readFile(filePath, 'utf8')
+export async function selectTextFile(
+  ext: string[]
+): Promise<{ fileName: string; content: string } | null> {
+  const result = await dialog.showOpenDialog({
+    title: i18next.t('common.dialog.selectSubscriptionFile'),
+    filters: [{ name: `${ext} file`, extensions: ext }],
+    properties: ['openFile']
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  const filePath = result.filePaths[0]
+  const { readFile } = await import('fs/promises')
+  const content = await readFile(filePath, 'utf8')
+  const fileName = path.basename(filePath)
+  return { fileName, content }
 }
 
 export function openFile(type: 'profile' | 'override', id: string, ext?: 'yaml' | 'js'): void {

@@ -65,8 +65,12 @@ const validInvokeChannels = [
   'getSmartOverrideContent',
   'getRuleStr',
   'setRuleStr',
+  'secureStoreGet',
+  'secureStoreSet',
+  'secureStoreDelete',
+  'secureStoreAvailable',
+  'selectTextFile',
   'getFilePath',
-  'readTextFile',
   'openFile',
   // Core
   'restartCore',
