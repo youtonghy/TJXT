@@ -150,7 +150,8 @@ const validInvokeChannels = [
   // Misc
   'getGistUrl',
   'getImageDataURL',
-  'changeLanguage'
+  'changeLanguage',
+  'userCenterApiRequest'
 ] as const
 
 // 允许的 on/removeListener channels 白名单
@@ -163,7 +164,8 @@ const validListenChannels = [
   'controledMihomoConfigUpdated',
   'profileConfigUpdated',
   'groupsUpdated',
-  'rulesUpdated'
+  'rulesUpdated',
+  'userCenterLogin'
 ] as const
 
 // 允许的 send channels 白名单

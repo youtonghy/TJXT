@@ -90,12 +90,6 @@ import {
 } from '../sys/misc'
 import { getRuntimeConfig, getRuntimeConfigStr } from '../core/factory'
 import {
-  isSecureStoreAvailable,
-  secureStoreDelete,
-  secureStoreGet,
-  secureStoreSet
-} from './secure-store'
-import {
   listWebdavBackups,
   webdavBackup,
   webdavDelete,
@@ -127,9 +121,16 @@ import { getGistUrl } from '../resolve/gistApi'
 import { startMonitor } from '../resolve/trafficMonitor'
 import { closeFloatingWindow, showContextMenu, showFloatingWindow } from '../resolve/floatingWindow'
 import { addProfileUpdater, removeProfileUpdater } from '../core/profileUpdater'
+import {
+  isSecureStoreAvailable,
+  secureStoreDelete,
+  secureStoreGet,
+  secureStoreSet
+} from './secure-store'
 import { getImageDataURL } from './image'
 import { logDir, rulePath } from './dirs'
 import { installMihomoCore, getGitHubTags, clearVersionCache } from './github'
+import * as chromeRequest from './chromeRequest'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AsyncFn = (...args: any[]) => Promise<any>
@@ -228,6 +229,39 @@ async function changeLanguage(lng: string): Promise<void> {
 async function setTitleBarOverlay(overlay: Electron.TitleBarOverlayOptions): Promise<void> {
   if (mainWindow && typeof mainWindow.setTitleBarOverlay === 'function') {
     mainWindow.setTitleBarOverlay(overlay)
+  }
+}
+
+async function userCenterApiRequest(options: {
+  url: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  headers?: Record<string, string>
+  body?: string
+  timeoutMs?: number
+}): Promise<{
+  status: number
+  statusText: string
+  headers: Record<string, string>
+  body: string
+  url: string
+}> {
+  const { url, method = 'GET', headers = {}, body, timeoutMs = 10000 } = options
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error(`Invalid URL: ${url}`)
+  }
+  const response = await chromeRequest.request<string>(url, {
+    method,
+    headers,
+    body,
+    timeout: timeoutMs,
+    responseType: 'text'
+  })
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+    body: response.data ?? '',
+    url: response.url
   }
 }
 
@@ -360,6 +394,7 @@ const asyncHandlers: Record<string, AsyncFn> = {
   getImageDataURL,
   changeLanguage,
   setTitleBarOverlay,
+  userCenterApiRequest,
   registerShortcut,
   readLatestLogTail
 }

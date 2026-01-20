@@ -4,6 +4,7 @@
 
 import backendSeedsRaw from '@renderer/config/user-center-backends.json'
 import { API_USER_AGENT } from './api-service'
+import { userCenterApiRequest } from './ipc'
 
 type BackendSeed = {
   id: string
@@ -101,14 +102,21 @@ export const callV3Gateway = async (
     body.params = params
   }
 
-  return fetch(gatewayUrl, {
+  const response = await userCenterApiRequest({
+    url: gatewayUrl,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...headers
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs)
+    timeoutMs
+  })
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
   })
 }
 

@@ -158,6 +158,19 @@ interface IpcApi {
   // Misc
   getGistUrl: () => Promise<string>
   getImageDataURL: (url: string) => Promise<string>
+  userCenterApiRequest: (options: {
+    url: string
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+    headers?: Record<string, string>
+    body?: string
+    timeoutMs?: number
+  }) => Promise<{
+    status: number
+    statusText: string
+    headers: Record<string, string>
+    body: string
+    url: string
+  }>
   relaunchApp: () => Promise<void>
   quitApp: () => Promise<void>
 }
@@ -313,6 +326,7 @@ export const {
   // Misc
   getGistUrl,
   getImageDataURL,
+  userCenterApiRequest,
   relaunchApp,
   quitApp
 } = ipc

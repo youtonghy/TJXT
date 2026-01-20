@@ -28,5 +28,18 @@ export async function handleDeepLink(url: string): Promise<void> {
       }
       break
     }
+    case 'user-center-login': {
+      const accessToken = urlObj.searchParams.get('access_token')
+      const tokenType = urlObj.searchParams.get('token_type')
+      const error = urlObj.searchParams.get('error')
+      const state = urlObj.searchParams.get('state')
+      mainWindow?.webContents.send('userCenterLogin', {
+        accessToken: accessToken ?? undefined,
+        tokenType: tokenType ?? undefined,
+        error: error ?? undefined,
+        state: state ?? undefined
+      })
+      break
+    }
   }
 }
