@@ -34,7 +34,7 @@ import {
   Tabs,
   Tab
 } from '@heroui/react'
-import { API_USER_AGENT } from '@renderer/utils/api-service'
+import { createApiService } from '@renderer/utils/api-service'
 import {
   IoCloseOutline,
   IoPersonOutline,
@@ -54,7 +54,6 @@ import {
   updateBackendPingResults,
   initializeBackends,
   findOptimalBackend,
-  callV3Gateway,
   normalizeBackendUrl,
   BackendTestResult
 } from '@renderer/utils/user-center-backend'
@@ -383,93 +382,14 @@ const UserCenter: React.FC = () => {
     [clearWebLoginState, t]
   )
 
-  // 通用API请求函数（使用 V3 网关）
-  const apiRequest = useCallback(
-    async (
-      endpoint: string,
-      options: { method?: 'GET' | 'POST'; params?: Record<string, unknown> } = {}
-    ) => {
-      const authHeader = tokenManager.getAuthHeaderValue()
-      if (!authHeader) {
-        logDebug('apiRequest aborted (missing auth)', { endpoint, method: options.method || 'GET' })
-        setIsLoggedIn(false)
-        return null
-      }
-
-      // 移除开头的斜杠
-      const cleanEndpoint = endpoint.replace(/^\/+/, '')
-      const baseUrl = getNormalizedBaseUrl()
-
-      try {
-        logDebug('apiRequest start', {
-          endpoint: cleanEndpoint,
-          method: options.method || 'GET',
-          baseUrl
-        })
-        const response = await callV3Gateway(
-          baseUrl,
-          cleanEndpoint,
-          options.method || 'GET',
-          options.params,
-          {
-            Authorization: authHeader,
-            'User-Agent': API_USER_AGENT
-          }
-        )
-        logDebug('apiRequest response', {
-          endpoint: cleanEndpoint,
-          status: response.status,
-          ok: response.ok
-        })
-
-        if (response.status === 401) {
-          // Token无效或过期，清除并重新登录
-          tokenManager.clearToken()
-          setIsLoggedIn(false)
-          return null
-        }
-
-        if (!response.ok) {
-          let errorMessage = `HTTP ${response.status}`
-          try {
-            const text = await response.text()
-            const obj = JSON.parse(text)
-            const keys = ['message', 'msg', 'error', 'detail', 'info']
-            for (const k of keys) {
-              const v = (obj as Record<string, unknown>)[k]
-              if (typeof v === 'string' && v.trim()) {
-                errorMessage = v.trim()
-                break
-              }
-            }
-          } catch {
-            // ignore parse errors
-          }
-          throw new Error(errorMessage)
-        }
-
-        const data = await response.json()
-
-        // API请求成功，更新网络状态
-        setNetworkStatus({
-          isOnline: true,
-          lastConnected: new Date()
-        })
-
-        return data.data || data
-      } catch (error) {
-        // 仅在网络错误时设置离线状态
-        if (shouldMarkOffline(error)) {
-          setNetworkStatus((prev) => ({ ...prev, isOnline: false }))
-        }
-
-        console.error(`API request failed for ${endpoint}:`, error)
-        logDebug('apiRequest failed', { endpoint: cleanEndpoint, error })
-        throw error
-      }
-    },
-    [activeBackend, getNormalizedBaseUrl, logDebug, shouldMarkOffline]
-  )
+  const authHeader = tokenManager.getAuthHeaderValue()
+  const api = useMemo(() => {
+    const baseUrl = getNormalizedBaseUrl()
+    return createApiService(baseUrl, authHeader, () => {
+      tokenManager.clearToken()
+      setIsLoggedIn(false)
+    })
+  }, [getNormalizedBaseUrl, authHeader])
 
   // 获取用户信息
   const fetchUserInfo = useCallback(
@@ -481,7 +401,7 @@ const UserCenter: React.FC = () => {
 
       try {
         // 使用 getSubscribe 接口获取详细流量信息
-        const data = await apiRequest('/user/getSubscribe')
+        const data = await api.getSubscribe()
 
         if (data) {
           const newUserInfo: UserInfo = {
@@ -496,6 +416,7 @@ const UserCenter: React.FC = () => {
           setUserInfo(newUserInfo)
           setIsLoggedIn(true)
           setLastUpdate(new Date())
+          setNetworkStatus({ isOnline: true, lastConnected: new Date() })
         }
       } catch (error) {
         const errorMessage =
@@ -508,7 +429,7 @@ const UserCenter: React.FC = () => {
         setLoading((prev) => ({ ...prev, userInfo: false }))
       }
     },
-    [apiRequest]
+    [api]
   ) // 移除userInfo依赖，避免无限循环
 
   // 获取公告
@@ -520,17 +441,8 @@ const UserCenter: React.FC = () => {
       }
 
       try {
-        const data = await apiRequest('/user/notice/fetch')
-
-        // 处理不同的响应格式
-        let notices: any[] = []
-        if (Array.isArray(data)) {
-          notices = data
-        } else if (data && Array.isArray(data.data)) {
-          notices = data.data
-        } else if (data && data.data && Array.isArray(data.data.list)) {
-          notices = data.data.list
-        }
+        const result = await api.getNotices()
+        const notices: any[] = Array.isArray(result?.data) ? result.data : []
 
         if (notices && notices.length > 0) {
           const filteredAnnouncements: Announcement[] = notices
@@ -569,6 +481,7 @@ const UserCenter: React.FC = () => {
         } else {
           setAnnouncements([])
         }
+        setNetworkStatus({ isOnline: true, lastConnected: new Date() })
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : t('userCenter.fetchAnnouncementsFailed')
@@ -580,7 +493,7 @@ const UserCenter: React.FC = () => {
         setLoading((prev) => ({ ...prev, announcements: false }))
       }
     },
-    [apiRequest]
+    [api]
   )
 
   const markAnnouncementAsRead = useCallback(
@@ -606,9 +519,7 @@ const UserCenter: React.FC = () => {
 
     try {
       const startTime = Date.now()
-      const response = await callV3Gateway(baseUrl, 'guest/comm/config', 'GET', undefined, {
-        'User-Agent': API_USER_AGENT
-      })
+      const configData = await api.getGuestConfig()
       const endTime = Date.now()
       const ping = endTime - startTime
 
@@ -618,29 +529,18 @@ const UserCenter: React.FC = () => {
         lastTest: new Date()
       })
 
-      if (response.ok) {
-        let configData: any = null
-        try {
-          const payload = await response.json()
-          configData = payload?.data ?? payload
-        } catch {
-          configData = null
-        }
-        if (configData) {
-          const rawEnable = configData.telegram_login_enable ?? configData.is_telegram
-          const telegramEnabled = rawEnable === 1 || rawEnable === '1' || rawEnable === true
-          setTelegramLoginEnabled(telegramEnabled)
-        } else {
-          setTelegramLoginEnabled(false)
-        }
+      if (configData) {
+        const rawEnable = (configData as any).telegram_login_enable ?? (configData as any).is_telegram
+        const telegramEnabled = rawEnable === 1 || rawEnable === '1' || rawEnable === true
+        setTelegramLoginEnabled(telegramEnabled)
+      } else {
+        setTelegramLoginEnabled(false)
+      }
         setNetworkStatus({
           isOnline: true,
           lastConnected: new Date()
         })
         setErrors((prev) => ({ ...prev, userInfo: null }))
-      } else {
-        throw new Error(t('userCenter.serverResponseError', { status: response.status }))
-      }
     } catch (error) {
       setServerTestStatus((prev) => ({
         ...prev,
@@ -668,7 +568,7 @@ const UserCenter: React.FC = () => {
         setNetworkStatus((prev) => ({ ...prev, isOnline: false }))
       }
     }
-  }, [getNormalizedBaseUrl, logDebug, shouldMarkOffline])
+  }, [getNormalizedBaseUrl, logDebug, shouldMarkOffline, api, t])
 
   // Backend management functions
   const initializeBackendList = useCallback(async () => {
@@ -830,9 +730,7 @@ const UserCenter: React.FC = () => {
   )
 
   const handleWebLogin = async () => {
-    const baseUrl = getNormalizedBaseUrl()
-
-    if (!baseUrl) {
+    if (!getNormalizedBaseUrl()) {
       setErrors((prev) => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
       return
     }
@@ -855,64 +753,20 @@ const UserCenter: React.FC = () => {
       localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
       logDebug('webLogin state generated', { state })
 
-      const response = await callV3Gateway(
-        baseUrl,
-        'passport/auth/thirdPartyLogin/init',
-        'POST',
-        {
-          redirect_uri: WEB_LOGIN_REDIRECT_URI,
-          state
-        },
-        {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': API_USER_AGENT
-        }
-      )
-
-      const contentType = response.headers.get('content-type') || ''
-      logDebug('webLogin init response', {
-        status: response.status,
-        ok: response.ok,
-        contentType
-      })
-      if (!contentType.includes('application/json')) {
-        if (response.status === 404) {
-          throw new Error(t('userCenter.webLoginNotSupported'))
-        }
-        throw new Error(
-          response.ok ? t('userCenter.webLoginInitFailed') : `HTTP ${response.status}`
-        )
-      }
-
-      let data: any = null
-      try {
-        data = await response.json()
-      } catch {
-        throw new Error(t('userCenter.webLoginInitFailed'))
-      }
+      const data = await api.thirdPartyLoginInit(WEB_LOGIN_REDIRECT_URI, state)
       logDebug('webLogin init payload', {
-        keys: data ? Object.keys(data) : null,
-        appName: data?.data?.app_name ?? data?.app_name ?? null,
-        expiresIn: data?.data?.expires_in ?? null
+        appName: (data as any)?.app_name ?? null,
+        expiresIn: (data as any)?.expires_in ?? null
       })
 
-      if (!response.ok) {
-        const fallback =
-          response.status === 404
-            ? t('userCenter.webLoginNotSupported')
-            : t('userCenter.webLoginInitFailed')
-        throw new Error(data?.message || fallback)
-      }
-
-      const loginPageUrl = data?.data?.url ?? data?.url
+      const loginPageUrl = (data as any)?.url
       if (!loginPageUrl) {
         throw new Error(t('userCenter.webLoginInitFailed'))
       }
       logDebug('webLogin open page', { url: maskUrl(loginPageUrl) })
 
       setWebLoginStatus('pending')
-      scheduleWebLoginTimeout(data?.data?.expires_in)
+      scheduleWebLoginTimeout((data as any)?.expires_in)
       window.open(loginPageUrl, '_blank')
     } catch (error) {
       logDebug('webLogin init failed', error)
@@ -944,27 +798,10 @@ const UserCenter: React.FC = () => {
     setErrors((prev) => ({ ...prev, userInfo: null }))
     setTelegramStatus('idle')
 
-    const baseUrl = getNormalizedBaseUrl()
-
     try {
-      const response = await callV3Gateway(
-        baseUrl,
-        'passport/auth/loginWithTelegram',
-        'POST',
-        { email: email.trim() },
-        {
-          'User-Agent': API_USER_AGENT
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || t('userCenter.requestFailed'))
-      }
-
-      if (data.data && data.data.token) {
-        setTelegramToken(data.data.token)
+      const data = await api.loginWithTelegram(email.trim())
+      if ((data as any)?.token) {
+        setTelegramToken((data as any).token)
         setTelegramStatus('pending')
         // 保存用户邮箱
         localStorage.setItem('userEmail', email.trim())
@@ -1004,7 +841,6 @@ const UserCenter: React.FC = () => {
       return
     }
 
-    const baseUrl = getNormalizedBaseUrl()
     let cancelled = false
 
     const scheduleNext = (delayMs: number) => {
@@ -1046,19 +882,10 @@ const UserCenter: React.FC = () => {
       }
 
       try {
-        const response = await callV3Gateway(
-          baseUrl,
-          'passport/auth/checkTelegramLogin',
-          'GET',
-          { token: telegramToken },
-          {
-            'User-Agent': API_USER_AGENT
-          }
-        )
-        const data = await response.json()
+        const data = await api.checkTelegramLogin(telegramToken)
 
-        if (response.ok && data.data) {
-          const { status, verify_code } = data.data
+        if (data) {
+          const { status, verify_code } = data as any
 
           if (status === 'approved' && verify_code) {
             setTelegramStatus('approved')
@@ -1096,36 +923,17 @@ const UserCenter: React.FC = () => {
         pollingIntervalRef.current = null
       }
     }
-  }, [telegramToken, telegramStatus, activeBackend, getNormalizedBaseUrl])
+  }, [telegramToken, telegramStatus, activeBackend, getNormalizedBaseUrl, api])
 
   // Token Login (Final Step)（使用 V3 网关）
   const performTokenLogin = async (verifyCode: string) => {
     setLoading((prev) => ({ ...prev, userInfo: true }))
-    const baseUrl = getNormalizedBaseUrl()
-
     try {
-      logDebug('telegram token2Login start', { baseUrl, verify: maskToken(verifyCode) })
-      const response = await callV3Gateway(
-        baseUrl,
-        'passport/auth/token2Login',
-        'GET',
-        { verify: verifyCode },
-        {
-          'User-Agent': API_USER_AGENT
-        }
-      )
+      logDebug('telegram token2Login start', { verify: maskToken(verifyCode) })
+      const data = await api.token2Login(verifyCode)
+      logDebug('telegram token2Login payload', { keys: data ? Object.keys(data as any) : null })
 
-      logDebug('telegram token2Login response', { status: response.status, ok: response.ok })
-      if (!response.ok) {
-        throw new Error(t('userCenter.verifyLoginFailed'))
-      }
-
-      const data = await response.json()
-      logDebug('telegram token2Login payload', {
-        keys: data ? Object.keys(data) : null
-      })
-
-      const authPayload = normalizeAuthPayload(data?.data ?? data)
+      const authPayload = normalizeAuthPayload(data)
       if (authPayload) {
         await completeLogin(authPayload)
       } else {

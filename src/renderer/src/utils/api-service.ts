@@ -174,6 +174,23 @@ export interface LoginResponse {
   auth_data: string
 }
 
+export interface ThirdPartyLoginInitResponse {
+  token: string
+  url: string
+  expires_in: number
+  app_name: string
+}
+
+export interface TelegramLoginStartResponse {
+  token: string
+}
+
+export interface TelegramLoginStatusResponse {
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+  verify_code?: string
+  redirect?: string
+}
+
 // Auth error callback type
 export type AuthErrorCallback = () => void
 
@@ -250,6 +267,41 @@ export class ApiService {
     return data.data !== undefined ? data.data : data
   }
 
+  private validateV3Endpoint(endpoint: string): void {
+    // Align with API_DOCUMENTATION.md V3 gateway constraints.
+    const clean = endpoint.replace(/^\/+/, '')
+    if (!clean) throw { message: 'endpoint 不能为空', status: 400 } as ApiError
+    if (clean === 'server' || clean.startsWith('server/')) {
+      throw { message: 'endpoint 不允许为 server', status: 400 } as ApiError
+    }
+    if (clean.includes('..')) {
+      throw { message: 'endpoint 不允许包含 ..', status: 400 } as ApiError
+    }
+    if (!/^[A-Za-z0-9_\-/]+$/.test(clean)) {
+      throw { message: 'endpoint 含有非法字符', status: 400 } as ApiError
+    }
+  }
+
+  private async requestV3<T>(
+    endpoint: string,
+    method: 'GET' | 'POST',
+    params?: Record<string, unknown>,
+    withAuth: boolean = true
+  ): Promise<T> {
+    const clean = endpoint.replace(/^\/+/, '')
+    this.validateV3Endpoint(clean)
+
+    const response = await callV3Gateway(
+      this.baseUrl,
+      clean,
+      method,
+      params,
+      this.getHeaders(withAuth)
+    )
+
+    return this.handleResponse<T>(response)
+  }
+
   // ==================== Passport 认证模块 ====================
 
   /**
@@ -267,15 +319,58 @@ export class ApiService {
     if (options?.recaptcha_data) params.recaptcha_data = options.recaptcha_data
     if (options?.turnstile_token) params.turnstile_token = options.turnstile_token
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'passport/auth/login',
+    return this.requestV3<LoginResponse>('passport/auth/login', 'POST', params, false)
+  }
+
+  /**
+   * Third-party web login init
+   * POST passport/auth/thirdPartyLogin/init (via V3 Gateway)
+   */
+  async thirdPartyLoginInit(redirectUri: string, state?: string): Promise<ThirdPartyLoginInitResponse> {
+    const params: Record<string, unknown> = { redirect_uri: redirectUri }
+    if (state) params.state = state
+    return this.requestV3<ThirdPartyLoginInitResponse>(
+      'passport/auth/thirdPartyLogin/init',
       'POST',
       params,
-      this.getHeaders(false)
+      false
     )
+  }
 
-    return this.handleResponse<LoginResponse>(response)
+  /**
+   * Telegram login start
+   * POST passport/auth/loginWithTelegram (via V3 Gateway)
+   */
+  async loginWithTelegram(email: string, redirect?: string): Promise<TelegramLoginStartResponse> {
+    const params: Record<string, unknown> = { email }
+    if (redirect) params.redirect = redirect
+    return this.requestV3<TelegramLoginStartResponse>(
+      'passport/auth/loginWithTelegram',
+      'POST',
+      params,
+      false
+    )
+  }
+
+  /**
+   * Check Telegram login status
+   * GET passport/auth/checkTelegramLogin (via V3 Gateway)
+   */
+  async checkTelegramLogin(token: string): Promise<TelegramLoginStatusResponse> {
+    return this.requestV3<TelegramLoginStatusResponse>(
+      'passport/auth/checkTelegramLogin',
+      'GET',
+      { token },
+      false
+    )
+  }
+
+  /**
+   * Final step: exchange verify code for auth_data
+   * GET passport/auth/token2Login (via V3 Gateway)
+   */
+  async token2Login(verify: string): Promise<LoginResponse> {
+    return this.requestV3<LoginResponse>('passport/auth/token2Login', 'GET', { verify }, false)
   }
 
   /**
@@ -293,15 +388,7 @@ export class ApiService {
     if (options?.recaptcha_data) params.recaptcha_data = options.recaptcha_data
     if (options?.turnstile_token) params.turnstile_token = options.turnstile_token
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'passport/comm/sendEmailVerify',
-      'POST',
-      params,
-      this.getHeaders(false)
-    )
-
-    return this.handleResponse<boolean>(response)
+    return this.requestV3<boolean>('passport/comm/sendEmailVerify', 'POST', params, false)
   }
 
   // ==================== User 用户模块 ====================
@@ -311,15 +398,7 @@ export class ApiService {
    * GET user/info (via V3 Gateway)
    */
   async getUserInfo(): Promise<UserInfo> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/info',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<UserInfo>(response)
+    return this.requestV3<UserInfo>('user/info', 'GET')
   }
 
   /**
@@ -327,15 +406,7 @@ export class ApiService {
    * GET user/getSubscribe (via V3 Gateway)
    */
   async getSubscribe(): Promise<SubscribeInfo> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/getSubscribe',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<SubscribeInfo>(response)
+    return this.requestV3<SubscribeInfo>('user/getSubscribe', 'GET')
   }
 
   /**
@@ -343,15 +414,7 @@ export class ApiService {
    * GET user/getStat (via V3 Gateway)
    */
   async getUserStat(): Promise<[number, number, number]> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/getStat',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<[number, number, number]>(response)
+    return this.requestV3<[number, number, number]>('user/getStat', 'GET')
   }
 
   /**
@@ -359,15 +422,7 @@ export class ApiService {
    * GET user/checkLogin (via V3 Gateway)
    */
   async checkLogin(): Promise<{ is_login: boolean; is_admin: boolean }> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/checkLogin',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<{ is_login: boolean; is_admin: boolean }>(response)
+    return this.requestV3<{ is_login: boolean; is_admin: boolean }>('user/checkLogin', 'GET')
   }
 
   /**
@@ -375,6 +430,7 @@ export class ApiService {
    * POST user/redeemgiftcard (via V3 Gateway)
    */
   async redeemGiftCard(giftcard: string): Promise<GiftCardRedeemResult> {
+    // This endpoint returns { data: true, type: number, value: number }
     const response = await callV3Gateway(
       this.baseUrl,
       'user/redeemgiftcard',
@@ -383,7 +439,6 @@ export class ApiService {
       this.getHeaders(true)
     )
 
-    // This endpoint returns { data: true, type: number, value: number }
     const data = await response.json()
     if (!response.ok) {
       throw { message: data.message || `HTTP ${response.status}`, status: response.status } as ApiError
@@ -434,15 +489,7 @@ export class ApiService {
   async getPlans(id?: number): Promise<Plan[]> {
     const params = id ? { id } : undefined
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/plan/fetch',
-      'GET',
-      params,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<Plan[]>(response)
+    return this.requestV3<Plan[]>('user/plan/fetch', 'GET', params)
   }
 
   // ==================== Order 订单模块 ====================
@@ -454,15 +501,7 @@ export class ApiService {
   async getOrders(status?: number): Promise<OrderDetail[]> {
     const params = status !== undefined ? { status } : undefined
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/fetch',
-      'GET',
-      params,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<OrderDetail[]>(response)
+    return this.requestV3<OrderDetail[]>('user/order/fetch', 'GET', params)
   }
 
   /**
@@ -470,15 +509,7 @@ export class ApiService {
    * GET user/order/detail (via V3 Gateway)
    */
   async getOrderDetail(tradeNo: string): Promise<OrderDetail> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/detail',
-      'GET',
-      { trade_no: tradeNo },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<OrderDetail>(response)
+    return this.requestV3<OrderDetail>('user/order/detail', 'GET', { trade_no: tradeNo })
   }
 
   /**
@@ -498,15 +529,7 @@ export class ApiService {
     if (options.coupon_code) params.coupon_code = options.coupon_code
     if (options.deposit_amount !== undefined) params.deposit_amount = options.deposit_amount
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/save',
-      'POST',
-      params,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<string>(response)
+    return this.requestV3<string>('user/order/save', 'POST', params)
   }
 
   /**
@@ -540,15 +563,7 @@ export class ApiService {
    * GET user/order/check (via V3 Gateway)
    */
   async checkOrderStatus(tradeNo: string): Promise<number> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/check',
-      'GET',
-      { trade_no: tradeNo },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<number>(response)
+    return this.requestV3<number>('user/order/check', 'GET', { trade_no: tradeNo })
   }
 
   /**
@@ -556,15 +571,7 @@ export class ApiService {
    * POST user/order/cancel (via V3 Gateway)
    */
   async cancelOrder(tradeNo: string): Promise<boolean> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/cancel',
-      'POST',
-      { trade_no: tradeNo },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<boolean>(response)
+    return this.requestV3<boolean>('user/order/cancel', 'POST', { trade_no: tradeNo })
   }
 
   /**
@@ -572,15 +579,7 @@ export class ApiService {
    * GET user/order/getPaymentMethod (via V3 Gateway)
    */
   async getPaymentMethods(): Promise<PaymentMethod[]> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/order/getPaymentMethod',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<PaymentMethod[]>(response)
+    return this.requestV3<PaymentMethod[]>('user/order/getPaymentMethod', 'GET')
   }
 
   // ==================== Coupon 优惠券模块 ====================
@@ -593,15 +592,7 @@ export class ApiService {
     const params: Record<string, unknown> = { code }
     if (planId !== undefined) params.plan_id = planId
 
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/coupon/check',
-      'POST',
-      params,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<Coupon>(response)
+    return this.requestV3<Coupon>('user/coupon/check', 'POST', params)
   }
 
   // ==================== Ticket 工单模块 ====================
@@ -611,15 +602,7 @@ export class ApiService {
    * GET user/ticket/fetch (via V3 Gateway)
    */
   async getTickets(): Promise<TicketItem[]> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/ticket/fetch',
-      'GET',
-      undefined,
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<TicketItem[]>(response)
+    return this.requestV3<TicketItem[]>('user/ticket/fetch', 'GET')
   }
 
   /**
@@ -627,15 +610,7 @@ export class ApiService {
    * GET user/ticket/fetch (via V3 Gateway)
    */
   async getTicketDetail(id: number): Promise<TicketDetail> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/ticket/fetch',
-      'GET',
-      { id },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<TicketDetail>(response)
+    return this.requestV3<TicketDetail>('user/ticket/fetch', 'GET', { id })
   }
 
   /**
@@ -643,15 +618,7 @@ export class ApiService {
    * POST user/ticket/save (via V3 Gateway)
    */
   async createTicket(subject: string, level: number, message: string): Promise<boolean> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/ticket/save',
-      'POST',
-      { subject, level, message },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<boolean>(response)
+    return this.requestV3<boolean>('user/ticket/save', 'POST', { subject, level, message })
   }
 
   /**
@@ -659,15 +626,7 @@ export class ApiService {
    * POST user/ticket/reply (via V3 Gateway)
    */
   async replyTicket(id: number, message: string): Promise<boolean> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/ticket/reply',
-      'POST',
-      { id, message },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<boolean>(response)
+    return this.requestV3<boolean>('user/ticket/reply', 'POST', { id, message })
   }
 
   /**
@@ -675,15 +634,7 @@ export class ApiService {
    * POST user/ticket/close (via V3 Gateway)
    */
   async closeTicket(id: number): Promise<boolean> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'user/ticket/close',
-      'POST',
-      { id },
-      this.getHeaders(true)
-    )
-
-    return this.handleResponse<boolean>(response)
+    return this.requestV3<boolean>('user/ticket/close', 'POST', { id })
   }
 
   // ==================== Server 服务器模块 ====================
@@ -694,15 +645,7 @@ export class ApiService {
    */
   async getServers(): Promise<ServerInfo[]> {
     try {
-      const response = await callV3Gateway(
-        this.baseUrl,
-        'user/server/fetch',
-        'GET',
-        undefined,
-        this.getHeaders(true)
-      )
-
-      return this.handleResponse<ServerInfo[]>(response)
+      return await this.requestV3<ServerInfo[]>('user/server/fetch', 'GET')
     } catch (error) {
       // Return empty array if not logged in or server list not available
       console.debug('Failed to fetch server list:', error)
@@ -717,15 +660,7 @@ export class ApiService {
    * GET guest/comm/config (via V3 Gateway)
    */
   async getGuestConfig(): Promise<Record<string, unknown>> {
-    const response = await callV3Gateway(
-      this.baseUrl,
-      'guest/comm/config',
-      'GET',
-      undefined,
-      this.getHeaders(false)
-    )
-
-    return this.handleResponse<Record<string, unknown>>(response)
+    return this.requestV3<Record<string, unknown>>('guest/comm/config', 'GET', undefined, false)
   }
 
   /**
