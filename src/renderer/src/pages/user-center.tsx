@@ -11,6 +11,7 @@ import {
   clearUserToken,
   formatAuthToken as formatStoredAuthToken,
   getCachedTokenData,
+  initUserAuth,
   setUserToken
 } from '@renderer/utils/user-auth'
 import DOMPurify from 'dompurify'
@@ -149,7 +150,7 @@ const UserCenter: React.FC = () => {
     if (error instanceof Error) {
       const message = error.message.toLowerCase()
       if (message.startsWith('http ')) return false
-      if (message.includes('服务器响应异常')) return false
+      if (message.includes('server response error')) return false
       if (message.includes('timeout') || message.includes('timed out')) return true
       if (
         message.includes('failed to fetch') ||
@@ -296,9 +297,9 @@ const UserCenter: React.FC = () => {
 
   // Token管理工具函数
   const tokenManager = {
-    setToken: (token: string, expiresInDays: number = 7, tokenType?: string | null) => {
+    setToken: async (token: string, expiresInDays: number = 7, tokenType?: string | null) => {
       const normalizedType = normalizeTokenType(tokenType)
-      void setUserToken(token, expiresInDays, normalizedType)
+      await setUserToken(token, expiresInDays, normalizedType)
       logDebug('token stored', {
         token: maskToken(token),
         tokenType: normalizedType
@@ -484,7 +485,7 @@ const UserCenter: React.FC = () => {
 
         if (data) {
           const newUserInfo: UserInfo = {
-            email: data.email || 'user@example.com',
+            email: data.email || t('userCenter.defaultEmail'),
             traffic: {
               upload: Number(data.u) || 0,
               download: Number(data.d) || 0,
@@ -497,11 +498,12 @@ const UserCenter: React.FC = () => {
           setLastUpdate(new Date())
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '获取用户信息失败'
+        const errorMessage =
+          error instanceof Error ? error.message : t('userCenter.fetchUserInfoFailed')
         setErrors((prev) => ({ ...prev, userInfo: errorMessage }))
 
         // API失败时，仅在初次加载时使用模拟数据
-        console.warn('用户信息加载失败，使用模拟数据:', error)
+        console.warn(t('userCenter.fetchUserInfoFallbackLog'), error)
       } finally {
         setLoading((prev) => ({ ...prev, userInfo: false }))
       }
@@ -548,7 +550,7 @@ const UserCenter: React.FC = () => {
 
               return {
                 id: String(notice.id || Math.random().toString(36).slice(2)),
-                title: notice.title || '公告',
+                title: notice.title || t('userCenter.announcementFallbackTitle'),
                 content: notice.content || '',
                 date: new Date(createdAtMs).toLocaleString('zh-CN'),
                 imgUrl,
@@ -568,11 +570,12 @@ const UserCenter: React.FC = () => {
           setAnnouncements([])
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '获取公告失败'
+        const errorMessage =
+          error instanceof Error ? error.message : t('userCenter.fetchAnnouncementsFailed')
         setErrors((prev) => ({ ...prev, announcements: errorMessage }))
 
         // API失败时，仅在初次加载时使用模拟数据
-        console.warn('公告加载失败，使用模拟数据:', error)
+        console.warn(t('userCenter.fetchAnnouncementsFallbackLog'), error)
       } finally {
         setLoading((prev) => ({ ...prev, announcements: false }))
       }
@@ -636,7 +639,7 @@ const UserCenter: React.FC = () => {
         })
         setErrors((prev) => ({ ...prev, userInfo: null }))
       } else {
-        throw new Error(`服务器响应异常 (${response.status})`)
+        throw new Error(t('userCenter.serverResponseError', { status: response.status }))
       }
     } catch (error) {
       setServerTestStatus((prev) => ({
@@ -646,12 +649,12 @@ const UserCenter: React.FC = () => {
       }))
       setTelegramLoginEnabled(false)
 
-      let errorMsg = '服务器连接失败'
+      let errorMsg = t('userCenter.serverConnectionFailed')
       if (error instanceof Error) {
         if (error.name === 'AbortError' || error.message.includes('timeout')) {
-          errorMsg = '服务器响应超时'
+          errorMsg = t('userCenter.serverTimeout')
         } else if (error.message.includes('fetch')) {
-          errorMsg = '网络连接错误'
+          errorMsg = t('userCenter.networkError')
         } else {
           errorMsg = error.message
         }
@@ -659,7 +662,7 @@ const UserCenter: React.FC = () => {
 
       setErrors((prev) => ({
         ...prev,
-        userInfo: `服务器测试失败: ${errorMsg}`
+        userInfo: t('userCenter.serverTestFailed', { error: errorMsg })
       }))
       if (shouldMarkOffline(error)) {
         setNetworkStatus((prev) => ({ ...prev, isOnline: false }))
@@ -798,13 +801,13 @@ const UserCenter: React.FC = () => {
       const normalized = normalizeAuthPayload(authPayload)
       if (!normalized) {
         logDebug('completeLogin failed to normalize payload', { payload: authPayload })
-        throw new Error('返回数据格式错误')
+        throw new Error(t('userCenter.responseFormatError'))
       }
       logDebug('completeLogin start', {
         token: maskToken(normalized.token),
         tokenType: normalized.tokenType || null
       })
-      tokenManager.setToken(normalized.token, 7, normalized.tokenType)
+      await tokenManager.setToken(normalized.token, 7, normalized.tokenType)
       setIsLoggedIn(true)
       setErrors((prev) => ({ ...prev, userInfo: null }))
       setTelegramToken(null)
@@ -852,19 +855,20 @@ const UserCenter: React.FC = () => {
       localStorage.setItem(WEB_LOGIN_STATE_KEY, state)
       logDebug('webLogin state generated', { state })
 
-      // thirdPartyLogin/init 是白名单接口，可以直连（使用 /api/v3 路径）
-      const response = await fetch(`${baseUrl}/api/v3/passport/auth/thirdPartyLogin/init`, {
-        method: 'POST',
-        headers: {
+      const response = await callV3Gateway(
+        baseUrl,
+        'passport/auth/thirdPartyLogin/init',
+        'POST',
+        {
+          redirect_uri: WEB_LOGIN_REDIRECT_URI,
+          state
+        },
+        {
           Accept: 'application/json',
           'Content-Type': 'application/json',
           'User-Agent': API_USER_AGENT
-        },
-        body: JSON.stringify({
-          redirect_uri: WEB_LOGIN_REDIRECT_URI,
-          state
-        })
-      })
+        }
+      )
 
       const contentType = response.headers.get('content-type') || ''
       logDebug('webLogin init response', {
@@ -924,14 +928,14 @@ const UserCenter: React.FC = () => {
   // 登录处理（使用 V3 网关）
   const handleTelegramLogin = async () => {
     if (!email.trim()) {
-      setErrors((prev) => ({ ...prev, userInfo: '请输入邮箱地址' }))
+      setErrors((prev) => ({ ...prev, userInfo: t('userCenter.emailRequired') }))
       return
     }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
-      setErrors((prev) => ({ ...prev, userInfo: '请输入正确的邮箱格式' }))
+      setErrors((prev) => ({ ...prev, userInfo: t('userCenter.emailInvalid') }))
       return
     }
 
@@ -956,7 +960,7 @@ const UserCenter: React.FC = () => {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || '请求失败')
+        throw new Error(data.message || t('userCenter.requestFailed'))
       }
 
       if (data.data && data.data.token) {
@@ -965,10 +969,13 @@ const UserCenter: React.FC = () => {
         // 保存用户邮箱
         localStorage.setItem('userEmail', email.trim())
       } else {
-        throw new Error('未获取到登录凭证')
+        throw new Error(t('userCenter.loginTokenMissing'))
       }
     } catch (error: any) {
-      setErrors((prev) => ({ ...prev, userInfo: error.message || '发起登录失败' }))
+      setErrors((prev) => ({
+        ...prev,
+        userInfo: error.message || t('userCenter.loginRequestFailed')
+      }))
     } finally {
       setLoading((prev) => ({ ...prev, userInfo: false }))
     }
@@ -1020,7 +1027,10 @@ const UserCenter: React.FC = () => {
       setTelegramStatus(status)
       setErrors((prev) => ({
         ...prev,
-        userInfo: status === 'rejected' ? '登录请求被拒绝' : '登录请求已过期'
+        userInfo:
+          status === 'rejected'
+            ? t('userCenter.telegramLoginRejected')
+            : t('userCenter.telegramLoginExpired')
       }))
       setTelegramToken(null)
       telegramPollingStartedAtRef.current = null
@@ -1107,7 +1117,7 @@ const UserCenter: React.FC = () => {
 
       logDebug('telegram token2Login response', { status: response.status, ok: response.ok })
       if (!response.ok) {
-        throw new Error('验证登录失败')
+        throw new Error(t('userCenter.verifyLoginFailed'))
       }
 
       const data = await response.json()
@@ -1119,10 +1129,13 @@ const UserCenter: React.FC = () => {
       if (authPayload) {
         await completeLogin(authPayload)
       } else {
-        throw new Error('返回数据格式错误')
+        throw new Error(t('userCenter.responseFormatError'))
       }
     } catch (error: any) {
-      setErrors((prev) => ({ ...prev, userInfo: error.message || '登录验证失败' }))
+      setErrors((prev) => ({
+        ...prev,
+        userInfo: error.message || t('userCenter.loginVerifyFailed')
+      }))
       setTelegramStatus('idle')
       setTelegramToken(null)
     } finally {
@@ -1294,16 +1307,24 @@ rules:
     initializeBackendList()
 
     // 检查并加载保存的token
-    const token = tokenManager.getToken()
-    logDebug('init token check', { hasToken: Boolean(token), token: maskToken(token) })
-    if (token) {
-      setIsLoggedIn(true)
-      fetchUserInfo()
-      fetchAnnouncements()
-    } else {
-      // 未登录状态，自动测试服务器连接
-      testServerConnection()
-    }
+    ;(async () => {
+      try {
+        await initUserAuth()
+      } catch (error) {
+        console.warn('initUserAuth failed in user-center init:', error)
+      }
+
+      const token = tokenManager.getToken()
+      logDebug('init token check', { hasToken: Boolean(token), token: maskToken(token) })
+      if (token) {
+        setIsLoggedIn(true)
+        fetchUserInfo()
+        fetchAnnouncements()
+      } else {
+        // 未登录状态，自动测试服务器连接
+        testServerConnection()
+      }
+    })()
 
     // 自动填充上次登录的邮箱
     const savedEmail = localStorage.getItem('userEmail')
@@ -1410,7 +1431,7 @@ rules:
         if (remainingDays > 0) {
           setErrors((prev) => ({
             ...prev,
-            userInfo: `登录将在${remainingDays}天后过期，请及时重新登录`
+            userInfo: t('userCenter.loginExpiring', { days: remainingDays })
           }))
         }
       }
@@ -1495,7 +1516,7 @@ rules:
                 <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
                   {t('userCenter.login')}
                 </h2>
-                <p className="text-default-500 mt-2">登录以访问您的用户中心</p>
+                <p className="text-default-500 mt-2">{t('userCenter.loginHint')}</p>
               </div>
             </CardHeader>
             <CardBody className="space-y-5 px-8 pb-8">
@@ -1503,7 +1524,7 @@ rules:
               {!networkStatus.isOnline && (
                 <div className="flex items-center gap-2 text-warning text-sm p-3 bg-warning/10 rounded-lg border border-warning/20">
                   <div className="w-2 h-2 rounded-full bg-warning animate-pulse"></div>
-                  <span>网络连接已断开，请检查网络连接</span>
+                  <span>{t('userCenter.networkDisconnected')}</span>
                 </div>
               )}
 
@@ -1522,7 +1543,7 @@ rules:
                         onPress={() => setErrors((prev) => ({ ...prev, userInfo: null }))}
                         className="mt-2 text-danger hover:bg-danger/10"
                       >
-                        关闭提示
+                        {t('userCenter.dismissNotice')}
                       </Button>
                     </div>
                   </div>
@@ -1617,7 +1638,7 @@ rules:
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="请输入邮箱"
+                      placeholder={t('userCenter.emailPlaceholder')}
                       size="lg"
                       variant="bordered"
                       radius="lg"
@@ -1645,9 +1666,11 @@ rules:
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                             <IoPaperPlaneOutline />
                           </div>
-                          <h4 className="font-bold text-primary">请在 Telegram 确认登录</h4>
+                          <h4 className="font-bold text-primary">
+                            {t('userCenter.telegramConfirmTitle')}
+                          </h4>
                           <p className="text-xs text-default-500">
-                            已向您的 Telegram 发送登录请求，请确认...
+                            {t('userCenter.telegramConfirmDesc')}
                           </p>
                         </div>
                       </div>
@@ -1663,7 +1686,7 @@ rules:
                       className="w-full h-12 text-base font-medium"
                       onPress={cancelTelegramLogin}
                     >
-                      取消登录
+                      {t('userCenter.telegramCancel')}
                     </Button>
                   ) : (
                     <Button
@@ -1677,7 +1700,9 @@ rules:
                       isDisabled={!email || !networkStatus.isOnline || webLoginStatus === 'pending'}
                       startContent={!loading.userInfo && <IoPaperPlaneOutline />}
                     >
-                      {loading.userInfo ? '请求中...' : 'Telegram 登录'}
+                      {loading.userInfo
+                        ? t('userCenter.requesting')
+                        : t('userCenter.telegramLogin')}
                     </Button>
                   )}
 
@@ -1692,7 +1717,7 @@ rules:
                       <div className="flex items-center gap-2">
                         <IoServerOutline className="text-primary text-lg" />
                         <label className="text-sm font-semibold text-foreground">
-                          选择后端服务器
+                          {t('userCenter.selectBackend')}
                         </label>
                       </div>
                       <Button
@@ -1708,17 +1733,17 @@ rules:
                         className="text-xs min-w-fit px-3 shadow-sm"
                       >
                         {isTestingBackends
-                          ? '测试中...'
+                          ? t('userCenter.testing')
                           : backends.length > 1
-                            ? '测试并选择最优'
-                            : '测试延迟'}
+                            ? t('userCenter.testAndPickBest')
+                            : t('userCenter.testLatency')}
                       </Button>
                     </div>
 
                     {isTestingBackends && (
                       <div className="flex items-center justify-center gap-2 text-primary text-xs">
                         <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                        <span>正在测试所有后端服务器延迟...</span>
+                        <span>{t('userCenter.testingAllBackends')}</span>
                       </div>
                     )}
 
@@ -1749,7 +1774,7 @@ rules:
                                     variant="solid"
                                     className="text-xs"
                                   >
-                                    默认
+                                    {t('userCenter.backendDefault')}
                                   </Chip>
                                 )}
                                 {selectedBackend?.id === backend.id && (
@@ -1759,7 +1784,7 @@ rules:
                                     variant="bordered"
                                     className="text-xs"
                                   >
-                                    当前选择
+                                    {t('userCenter.backendSelected')}
                                   </Chip>
                                 )}
                                 {selectedBackend?.id === backend.id && (
@@ -1779,7 +1804,9 @@ rules:
                                         backend.isActive ? 'bg-success' : 'bg-danger'
                                       }`}
                                     ></div>
-                                    {backend.isActive ? '在线' : '离线'}
+                                    {backend.isActive
+                                      ? t('userCenter.backendOnline')
+                                      : t('userCenter.backendOffline')}
                                   </div>
                                 )}
                                 {backend.lastPing && (
@@ -1802,17 +1829,19 @@ rules:
                                       }`}
                                     ></div>
                                     {backend.lastPing < 100
-                                      ? '极快'
+                                      ? t('userCenter.pingVeryFast')
                                       : backend.lastPing < 300
-                                        ? '很快'
+                                        ? t('userCenter.pingFast')
                                         : backend.lastPing < 1000
-                                          ? '良好'
-                                          : '较慢'}
+                                          ? t('userCenter.pingGood')
+                                          : t('userCenter.pingSlow')}
                                     ({backend.lastPing}ms)
                                   </div>
                                 )}
                                 {!backend.lastPing && !isTestingBackends && (
-                                  <div className="text-xs text-default-400">未测试</div>
+                                  <div className="text-xs text-default-400">
+                                    {t('userCenter.notTested')}
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1823,8 +1852,8 @@ rules:
 
                     <div className="text-xs text-default-500 text-center">
                       {backends.length > 1
-                        ? '每10秒自动测试延迟，不会自动切换'
-                        : '每10秒自动测试服务器连接状态'}
+                        ? t('userCenter.autoTestDelayHint')
+                        : t('userCenter.autoTestConnectionHint')}
                     </div>
                   </div>
                 </div>
@@ -1845,7 +1874,7 @@ rules:
             <CardBody className="py-3">
               <div className="flex items-center gap-2 text-warning">
                 <div className="w-2 h-2 rounded-full bg-warning animate-pulse"></div>
-                <span className="text-sm">网络连接已断开，数据可能不是最新的</span>
+                <span className="text-sm">{t('userCenter.networkDisconnectedStale')}</span>
               </div>
             </CardBody>
           </Card>
@@ -1865,7 +1894,7 @@ rules:
               {hasUnreadAnnouncements && (
                 <span
                   className="w-2 h-2 rounded-full bg-danger animate-pulse"
-                  aria-label="未读公告提醒"
+                  aria-label={t('userCenter.unreadAnnouncementsLabel')}
                 ></span>
               )}
               {loading.announcements && <Spinner size="sm" />}
@@ -1875,7 +1904,7 @@ rules:
             {errors.announcements ? (
               <div className="text-center py-8">
                 <div className="text-danger mb-2">
-                  <p>加载失败: {errors.announcements}</p>
+                  <p>{t('userCenter.loadFailed', { error: errors.announcements })}</p>
                 </div>
                 <div className="flex justify-center gap-2">
                   <Button
@@ -1884,14 +1913,14 @@ rules:
                     onPress={() => fetchAnnouncements(true)}
                     isLoading={loading.announcements}
                   >
-                    重试
+                    {t('userCenter.retry')}
                   </Button>
                   <Button
                     variant="light"
                     size="sm"
                     onPress={() => setErrors((prev) => ({ ...prev, announcements: null }))}
                   >
-                    关闭错误
+                    {t('userCenter.dismissError')}
                   </Button>
                 </div>
               </div>
@@ -1899,7 +1928,7 @@ rules:
               <div className="flex justify-center py-8">
                 <div className="flex flex-col items-center gap-2">
                   <Spinner />
-                  <p className="text-sm text-default-500">加载公告中...</p>
+                  <p className="text-sm text-default-500">{t('userCenter.loadingAnnouncements')}</p>
                 </div>
               </div>
             ) : announcements.length > 0 ? (
@@ -2001,9 +2030,9 @@ rules:
                   <div className="w-12 h-12 rounded-full bg-default-100 flex items-center justify-center">
                     <span className="text-default-400">📢</span>
                   </div>
-                  <p>暂无公告</p>
+                  <p>{t('userCenter.noAnnouncements')}</p>
                   <Button variant="light" size="sm" onPress={() => fetchAnnouncements(true)}>
-                    刷新试试
+                    {t('userCenter.refreshTry')}
                   </Button>
                 </div>
               </div>
@@ -2020,14 +2049,14 @@ rules:
           <CardBody>
             {errors.userInfo ? (
               <div className="text-center py-8 text-danger">
-                <p>加载失败: {errors.userInfo}</p>
+                <p>{t('userCenter.loadFailed', { error: errors.userInfo })}</p>
                 <Button
                   variant="light"
                   size="sm"
                   onPress={() => fetchUserInfo(true)}
                   className="mt-2"
                 >
-                  重试
+                  {t('userCenter.retry')}
                 </Button>
               </div>
             ) : userInfo ? (
@@ -2063,7 +2092,7 @@ rules:
 
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span>使用进度</span>
+                    <span>{t('userCenter.usageProgress')}</span>
                     <span>{getUsagePercentage().toFixed(1)}%</span>
                   </div>
                   <Progress
@@ -2088,7 +2117,9 @@ rules:
                       {userInfo.traffic.expire
                         ? formatDate(userInfo.traffic.expire)
                         : t('sider.cards.neverExpire')}
-                      {isExpiringSoon() && <span className="ml-2 text-xs">(即将过期)</span>}
+                      {isExpiringSoon() && (
+                        <span className="ml-2 text-xs">({t('userCenter.expiringSoon')})</span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2107,7 +2138,7 @@ rules:
             <CardHeader className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <IoServerOutline className="text-primary text-lg" />
-                <h3 className="text-lg font-semibold">选择后端服务器</h3>
+                <h3 className="text-lg font-semibold">{t('userCenter.selectBackend')}</h3>
               </div>
               <Button
                 size="sm"
@@ -2120,10 +2151,10 @@ rules:
                 className="text-xs min-w-fit px-3 shadow-sm"
               >
                 {isTestingBackends
-                  ? '测试中...'
+                  ? t('userCenter.testing')
                   : backends.length > 1
-                    ? '测试并选择最优'
-                    : '测试延迟'}
+                    ? t('userCenter.testAndPickBest')
+                    : t('userCenter.testLatency')}
               </Button>
             </CardHeader>
             <Divider />
@@ -2131,7 +2162,7 @@ rules:
               {isTestingBackends && (
                 <div className="flex items-center justify-center gap-2 text-primary text-xs mb-2">
                   <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                  <span>正在测试所有后端服务器延迟...</span>
+                  <span>{t('userCenter.testingAllBackends')}</span>
                 </div>
               )}
 
@@ -2157,7 +2188,7 @@ rules:
                           </span>
                           {backend.isDefault && (
                             <Chip size="sm" color="primary" variant="solid" className="text-xs">
-                              默认
+                              {t('userCenter.backendDefault')}
                             </Chip>
                           )}
                           {selectedBackend?.id === backend.id && (
@@ -2167,7 +2198,7 @@ rules:
                               variant="bordered"
                               className="text-xs"
                             >
-                              当前选择
+                              {t('userCenter.backendSelected')}
                             </Chip>
                           )}
                           {selectedBackend?.id === backend.id && (
@@ -2187,7 +2218,9 @@ rules:
                                   backend.isActive ? 'bg-success' : 'bg-danger'
                                 }`}
                               ></div>
-                              {backend.isActive ? '在线' : '离线'}
+                              {backend.isActive
+                                ? t('userCenter.backendOnline')
+                                : t('userCenter.backendOffline')}
                             </div>
                           )}
                           {backend.lastPing && (
@@ -2210,17 +2243,19 @@ rules:
                                 }`}
                               ></div>
                               {backend.lastPing < 100
-                                ? '极快'
+                                ? t('userCenter.pingVeryFast')
                                 : backend.lastPing < 300
-                                  ? '很快'
+                                  ? t('userCenter.pingFast')
                                   : backend.lastPing < 1000
-                                    ? '良好'
-                                    : '较慢'}
+                                    ? t('userCenter.pingGood')
+                                    : t('userCenter.pingSlow')}
                               ({backend.lastPing}ms)
                             </div>
                           )}
                           {!backend.lastPing && !isTestingBackends && (
-                            <div className="text-xs text-default-400">未测试</div>
+                            <div className="text-xs text-default-400">
+                              {t('userCenter.notTested')}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -2230,7 +2265,7 @@ rules:
               </div>
 
               <div className="text-xs text-default-500 text-center mt-2">
-                登录状态下不会自动切换后端，可手动测试或选择最优
+                {t('userCenter.loggedInNoAutoSwitchHint')}
               </div>
             </CardBody>
           </Card>
