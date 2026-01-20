@@ -224,7 +224,7 @@ const Store: React.FC = () => {
         else if (first && typeof first.message === 'string') msg = first.message
       }
     } catch {}
-    if (!msg) msg = 'Server Error'
+    if (!msg) msg = t('store.serverError')
     const id = Date.now() + Math.floor(Math.random() * 1000)
     setToasts((prev) => [...prev, { id, message: msg }])
     const timer = window.setTimeout(() => {
@@ -292,9 +292,9 @@ const Store: React.FC = () => {
         try {
           const obj = JSON.parse(text)
           const msg = (obj?.message || obj?.msg || obj?.error || obj?.detail || '') as string
-          setRedeemMsg((msg && msg.trim()) || text || '兑换失败')
+          setRedeemMsg((msg && msg.trim()) || text || t('store.redeemFailed'))
         } catch {
-          setRedeemMsg(text || '兑换失败')
+          setRedeemMsg(text || t('store.redeemFailed'))
         }
         setRedeemOk(false)
         return
@@ -303,15 +303,15 @@ const Store: React.FC = () => {
       try {
         const obj = JSON.parse(text)
         const msg = (obj?.message || obj?.msg || obj?.data || '') as string
-        setRedeemMsg((msg && String(msg).trim()) || '兑换成功')
+        setRedeemMsg((msg && String(msg).trim()) || t('store.redeemSuccess'))
       } catch {
-        setRedeemMsg(text || '兑换成功')
+        setRedeemMsg(text || t('store.redeemSuccess'))
       }
       setRedeemOk(true)
       setRedeemCode('')
     } catch (e) {
       console.error(e)
-      setRedeemMsg('网络错误，请稍后重试')
+      setRedeemMsg(t('store.networkErrorRetry'))
       setRedeemOk(false)
     } finally {
       setRedeeming(false)
@@ -321,7 +321,7 @@ const Store: React.FC = () => {
   useEffect(() => {
     if (!auth.isLoggedIn()) {
       try {
-        new Notification(t('store.loginRequired') || '请先登录')
+        new Notification(t('store.loginRequired'))
       } catch {}
       navigate('/user-center', { replace: true })
       return
@@ -671,14 +671,14 @@ const Store: React.FC = () => {
       <div className="mt-6 w-full max-w-[720px] px-3 sm:px-4 mx-auto">
         <Card className="rounded-2xl shadow-medium">
           <CardHeader>
-            <div className="font-semibold">兑换码</div>
+            <div className="font-semibold">{t('store.redeemTitle')}</div>
           </CardHeader>
           <CardBody>
             <div className="flex gap-3 items-end flex-wrap">
               <div className="flex-1 min-w-0">
                 <Input
-                  label="兑换码"
-                  placeholder="请输入兑换码"
+                  label={t('store.redeemCodeLabel')}
+                  placeholder={t('store.redeemCodePlaceholder')}
                   value={redeemCode}
                   onValueChange={setRedeemCode}
                 />
@@ -689,7 +689,7 @@ const Store: React.FC = () => {
                 isLoading={redeeming}
                 onPress={redeemGiftcard}
               >
-                兑换
+                {t('store.redeemSubmit')}
               </Button>
             </div>
           </CardBody>
