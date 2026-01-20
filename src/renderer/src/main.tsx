@@ -15,11 +15,15 @@ import { ProfileConfigProvider } from './hooks/use-profile-config'
 import { RulesProvider } from './hooks/use-rules'
 import { GroupsProvider } from './hooks/use-groups'
 import { ToastProvider } from './components/base/toast'
-import './i18n'
+import { initRendererI18n } from './i18n'
 
 let F12Count = 0
 
-init().then(() => {
+init()
+  .then(async () => {
+    // Ensure i18n is ready before first render to avoid missing translations.
+    await initRendererI18n()
+
   document.addEventListener('keydown', (e) => {
     if (platform !== 'darwin' && e.ctrlKey && e.key === 'q') {
       e.preventDefault()
@@ -69,4 +73,7 @@ init().then(() => {
       </HeroUIProvider>
     </React.StrictMode>
   )
-})
+  })
+  .catch((error) => {
+    console.error('Renderer init failed:', error)
+  })

@@ -5,10 +5,22 @@ import { getAppConfig } from './utils/ipc'
 // 初始化 React i18next
 i18n.use(initReactI18next)
 
-// 从配置中读取语言设置并初始化
-getAppConfig().then((config) => {
-  initI18n({ lng: config.language })
-})
+let initPromise: Promise<void> | null = null
+
+export async function initRendererI18n(): Promise<void> {
+  if (initPromise) return initPromise
+  initPromise = (async () => {
+    try {
+      const config = await getAppConfig()
+      await initI18n({ lng: config.language })
+    } catch (error) {
+      // Fallback to default config to avoid untranslated/blank UI on startup.
+      console.warn('[i18n] failed to load app config for language, fallback to default', error)
+      await initI18n()
+    }
+  })()
+  return initPromise
+}
 
 // 通知主进程语言变更
 i18n.on('languageChanged', (lng) => {
