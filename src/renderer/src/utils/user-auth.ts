@@ -34,12 +34,8 @@ const normalizeTokenType = (value?: string | null): string | null => {
   return trimmed || null
 }
 
-export const formatAuthToken = (token: string, tokenType?: string | null): string => {
-  if (/\s/.test(token)) return token
-  const normalizedType = normalizeTokenType(tokenType)
-  if (!normalizedType) return token
-  if (normalizedType.toLowerCase() === 'bearer') return `Bearer ${token}`
-  return `${normalizedType} ${token}`
+export const formatAuthToken = (token: string, _tokenType?: string | null): string => {
+  return token
 }
 
 const parseTokenData = (raw: string | null): UserTokenData | null => {

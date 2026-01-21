@@ -708,6 +708,7 @@ const UserCenter: React.FC = () => {
         tokenType: normalized.tokenType || null
       })
       await tokenManager.setToken(normalized.token, 7, normalized.tokenType)
+      api.setToken(tokenManager.getAuthHeaderValue())
       setIsLoggedIn(true)
       setErrors((prev) => ({ ...prev, userInfo: null }))
       setTelegramToken(null)
@@ -726,11 +727,12 @@ const UserCenter: React.FC = () => {
         console.warn('Initial data load failed:', e)
       }
     },
-    [fetchAnnouncements, fetchUserInfo, refreshUserSubscription, resetWebLogin]
+    [api, fetchAnnouncements, fetchUserInfo, refreshUserSubscription, resetWebLogin]
   )
 
   const handleWebLogin = async () => {
-    if (!getNormalizedBaseUrl()) {
+    const baseUrl = getNormalizedBaseUrl()
+    if (!baseUrl) {
       setErrors((prev) => ({ ...prev, userInfo: t('userCenter.webLoginBackendMissing') }))
       return
     }
@@ -1122,9 +1124,11 @@ rules:
         console.warn('initUserAuth failed in user-center init:', error)
       }
 
+      const authHeaderValue = tokenManager.getAuthHeaderValue()
       const token = tokenManager.getToken()
-      logDebug('init token check', { hasToken: Boolean(token), token: maskToken(token) })
-      if (token) {
+      logDebug('init token check', { hasToken: Boolean(authHeaderValue), token: maskToken(token) })
+      if (authHeaderValue) {
+        api.setToken(authHeaderValue)
         setIsLoggedIn(true)
         fetchUserInfo()
         fetchAnnouncements()
