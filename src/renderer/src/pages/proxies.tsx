@@ -17,6 +17,7 @@ import { GroupedVirtuoso, GroupedVirtuosoHandle } from 'react-virtuoso'
 import ProxyItem from '@renderer/components/proxies/proxy-item'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useGroups } from '@renderer/hooks/use-groups'
+import { useServerRates } from '@renderer/hooks/use-server-rates'
 import CollapseInput from '@renderer/components/base/collapse-input'
 import { includesIgnoreCase } from '@renderer/utils/includes'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
@@ -113,6 +114,7 @@ const Proxies: React.FC = () => {
   const { mode = 'rule' } = controledMihomoConfig || {}
   const { groups = [], mutate } = useGroups()
   const { appConfig, patchAppConfig } = useAppConfig()
+  const { rateMap: serverRateMap } = useServerRates()
   const {
     proxyDisplayMode = 'simple',
     proxyDisplayOrder = 'default',
@@ -490,22 +492,21 @@ const Proxies: React.FC = () => {
           className={`grid ${proxyCols === 'auto' ? 'sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : ''} ${groupIndex === groupCounts.length - 1 && innerIndex === groupCounts[groupIndex] - 1 ? 'pb-2' : ''} gap-2 pt-2 mx-2`}
         >
           {Array.from({ length: cols }).map((_, i) => {
-            if (!allProxies[groupIndex][innerIndex * cols + i]) return null
+            const proxyItem = allProxies[groupIndex][innerIndex * cols + i]
+            if (!proxyItem) return null
+            const proxyRate = serverRateMap.get(proxyItem.name)
             return (
               <ProxyItem
-                key={allProxies[groupIndex][innerIndex * cols + i].name}
+                key={proxyItem.name}
                 mutateProxies={mutate}
                 onProxyDelay={onProxyDelay}
                 onSelect={onChangeProxy}
-                proxy={allProxies[groupIndex][innerIndex * cols + i]}
+                proxy={proxyItem}
                 group={groups[groupIndex]}
                 proxyDisplayMode={proxyDisplayMode}
-                selected={
-                  allProxies[groupIndex][innerIndex * cols + i]?.name === groups[groupIndex].now
-                }
-                isGroupTesting={proxyDelaying.has(
-                  allProxies[groupIndex][innerIndex * cols + i].name
-                )}
+                rate={proxyRate}
+                selected={proxyItem.name === groups[groupIndex].now}
+                isGroupTesting={proxyDelaying.has(proxyItem.name)}
               />
             )
           })}
@@ -522,6 +523,7 @@ const Proxies: React.FC = () => {
       groups,
       proxyDisplayMode,
       proxyDelaying,
+      serverRateMap,
       mutate,
       onProxyDelay,
       onChangeProxy

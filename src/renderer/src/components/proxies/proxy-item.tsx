@@ -12,6 +12,7 @@ interface Props {
   group: IMihomoMixedGroup
   onSelect: (group: string, proxy: string) => void
   selected: boolean
+  rate?: number
   isGroupTesting?: boolean
 }
 
@@ -30,6 +31,7 @@ const ProxyItemBase: React.FC<Props> = (props) => {
     group,
     proxy,
     selected,
+    rate,
     onSelect,
     onProxyDelay,
     isGroupTesting = false
@@ -51,6 +53,15 @@ const ProxyItemBase: React.FC<Props> = (props) => {
     if (delay === 0) return t('proxies.delay.timeout')
     return delay.toString()
   }, [delay, t])
+
+  const rateLabel = useMemo(() => {
+    if (rate === undefined || rate === null || !Number.isFinite(rate)) return null
+    const normalized = Number(rate)
+    const formatted = Number.isInteger(normalized)
+      ? normalized.toString()
+      : normalized.toFixed(2).replace(/\.?0+$/, '')
+    return `${formatted}x`
+  }, [rate])
 
   const onDelay = useCallback((): void => {
     setLoading(true)
@@ -119,6 +130,11 @@ const ProxyItemBase: React.FC<Props> = (props) => {
                       </div>
                     )
                 )}
+                {rateLabel && (
+                  <div className="text-foreground-400 text-xs bg-default-100 px-1 rounded-md">
+                    {rateLabel}
+                  </div>
+                )}
               </div>
               <Button
                 isIconOnly
@@ -183,6 +199,7 @@ const ProxyItem = React.memo(ProxyItemBase, (prevProps, nextProps) => {
     prevProps.selected === nextProps.selected &&
     prevProps.proxyDisplayMode === nextProps.proxyDisplayMode &&
     prevProps.group.fixed === nextProps.group.fixed &&
+    prevProps.rate === nextProps.rate &&
     prevProps.isGroupTesting === nextProps.isGroupTesting
   )
 })

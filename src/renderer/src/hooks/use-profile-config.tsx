@@ -70,6 +70,17 @@ export const ProfileConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 
     const isLoggedIn = Boolean(getCachedTokenData())
 
+    if (!isLoggedIn) {
+      const items = rawProfileConfig.items.filter((item) => item.id !== USER_SUBSCRIPTION_ID)
+      const currentExists = items.some((item) => item.id === rawProfileConfig.current)
+      const current = currentExists ? rawProfileConfig.current : items[0]?.id ?? rawProfileConfig.current
+      return {
+        ...rawProfileConfig,
+        current,
+        items
+      }
+    }
+
     const existingUserSubscription = rawProfileConfig.items.find(
       (item) => item.id === USER_SUBSCRIPTION_ID
     )

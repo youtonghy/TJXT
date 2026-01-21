@@ -165,7 +165,7 @@ export interface ServerInfo {
   host: string
   port: number
   group_id: number
-  rate: number
+  rate: number | string
   tags?: string[]
 }
 
