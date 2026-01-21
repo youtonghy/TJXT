@@ -110,5 +110,5 @@
     "vite": "^7.2.2",
     "vite-plugin-monaco-editor": "^1.1.0"
   },
-  "packageManager": "pnpm@10.27.0"
+  "packageManager": "pnpm@10.28.1"
 }
