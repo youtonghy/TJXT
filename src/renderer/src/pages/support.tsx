@@ -138,7 +138,7 @@ const Support: React.FC = () => {
         'GET',
         undefined,
         {
-          'Authorization': auth.getToken() || '',
+          'Authorization': auth.getAuthHeaderValue() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -169,7 +169,7 @@ const Support: React.FC = () => {
         'GET',
         { id },
         {
-          'Authorization': auth.getToken() || '',
+          'Authorization': auth.getAuthHeaderValue() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -211,7 +211,7 @@ const Support: React.FC = () => {
           message: m
         },
         {
-          'Authorization': auth.getToken() || '',
+          'Authorization': auth.getAuthHeaderValue() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -256,7 +256,7 @@ const Support: React.FC = () => {
           message: replyText.trim()
         },
         {
-          'Authorization': auth.getToken() || '',
+          'Authorization': auth.getAuthHeaderValue() || '',
           'User-Agent': API_USER_AGENT
         }
       )
@@ -282,7 +282,7 @@ const Support: React.FC = () => {
         'POST',
         { id: detail.id },
         {
-          'Authorization': auth.getToken() || '',
+          'Authorization': auth.getAuthHeaderValue() || '',
           'User-Agent': API_USER_AGENT
         }
       )
