@@ -12,7 +12,12 @@ export let mainWindow: BrowserWindow | null = null
 let quitTimeout: NodeJS.Timeout | null = null
 
 export async function createWindow(): Promise<void> {
-  const { useWindowFrame = false, silentStart = false, autoQuitWithoutCore = false, autoQuitWithoutCoreDelay = 60 } = await getAppConfig()
+  const {
+    useWindowFrame = false,
+    silentStart = false,
+    autoQuitWithoutCore = false,
+    autoQuitWithoutCoreDelay = 60
+  } = await getAppConfig()
   const mainWindowState = windowStateKeeper({
     defaultWidth: 800,
     defaultHeight: 600,
@@ -47,7 +52,11 @@ export async function createWindow(): Promise<void> {
   })
 
   mainWindowState.manage(mainWindow)
-  setupWindowEvents(mainWindow, mainWindowState, { silentStart, autoQuitWithoutCore, autoQuitWithoutCoreDelay })
+  setupWindowEvents(mainWindow, mainWindowState, {
+    silentStart,
+    autoQuitWithoutCore,
+    autoQuitWithoutCoreDelay
+  })
 
   if (is.dev) {
     mainWindow.webContents.openDevTools()
@@ -167,7 +176,11 @@ export function triggerMainWindow(force?: boolean): void {
 export function showMainWindow(): void {
   if (mainWindow) {
     clearQuitTimeout()
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
     mainWindow.show()
+    mainWindow.focus()
     mainWindow.focusOnWebView()
   }
 }

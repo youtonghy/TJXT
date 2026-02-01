@@ -46,6 +46,7 @@ const logoUrl = new URL('../../../resources/icon.ico', import.meta.url).href
 
 let navigate: NavigateFunction
 let driverInstance: ReturnType<typeof driver> | null = null
+const WEB_LOGIN_PENDING_KEY = 'userCenter.webLoginPendingPayload'
 
 export function getDriver(): ReturnType<typeof driver> | null {
   return driverInstance
@@ -78,13 +79,13 @@ const App: React.FC = () => {
       'substore'
     ]
   } = appConfig || {}
-  
+
   // 确保 userCenter 始终在 siderOrder 中且位于第一位
   const ensureUserCenterInOrder = (order: string[]): string[] => {
-    const filteredOrder = order.filter(item => item !== 'userCenter')
+    const filteredOrder = order.filter((item) => item !== 'userCenter')
     return ['userCenter', ...filteredOrder]
   }
-  
+
   const finalSiderOrder = ensureUserCenterInOrder(siderOrder)
   const narrowWidth = platform === 'darwin' ? 70 : 60
   const [order, setOrder] = useState(finalSiderOrder)
@@ -109,6 +110,34 @@ const App: React.FC = () => {
       }
     }
   }
+
+  useEffect(() => {
+    const handleUserCenterLogin = (
+      _event: Electron.IpcRendererEvent,
+      payload?: {
+        accessToken?: string | null
+        tokenType?: string | null
+        error?: string | null
+        state?: string | null
+      }
+    ): void => {
+      if (!payload) return
+      if (location.pathname === '/user-center') return
+      try {
+        localStorage.setItem(WEB_LOGIN_PENDING_KEY, JSON.stringify(payload))
+      } catch {
+        // ignore
+      }
+      navigate('/user-center')
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    window.electron.ipcRenderer.on('userCenterLogin', handleUserCenterLogin as any)
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      window.electron.ipcRenderer.removeListener('userCenterLogin', handleUserCenterLogin as any)
+    }
+  }, [location.pathname, navigate])
 
   useEffect(() => {
     setOrder(ensureUserCenterInOrder(siderOrder))

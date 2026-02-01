@@ -96,6 +96,7 @@ interface NetworkStatus {
 }
 
 const WEB_LOGIN_STATE_KEY = 'userCenter.webLoginState'
+const WEB_LOGIN_PENDING_KEY = 'userCenter.webLoginPendingPayload'
 const WEB_LOGIN_REDIRECT_URI = 'mihomo://user-center-login'
 const TELEGRAM_POLLING_TIMEOUT_MS = 90 * 1000
 const TELEGRAM_POLLING_BACKOFF_MS = [5000, 10000, 15000, 20000]
@@ -530,17 +531,18 @@ const UserCenter: React.FC = () => {
       })
 
       if (configData) {
-        const rawEnable = (configData as any).telegram_login_enable ?? (configData as any).is_telegram
+        const rawEnable =
+          (configData as any).telegram_login_enable ?? (configData as any).is_telegram
         const telegramEnabled = rawEnable === 1 || rawEnable === '1' || rawEnable === true
         setTelegramLoginEnabled(telegramEnabled)
       } else {
         setTelegramLoginEnabled(false)
       }
-        setNetworkStatus({
-          isOnline: true,
-          lastConnected: new Date()
-        })
-        setErrors((prev) => ({ ...prev, userInfo: null }))
+      setNetworkStatus({
+        isOnline: true,
+        lastConnected: new Date()
+      })
+      setErrors((prev) => ({ ...prev, userInfo: null }))
     } catch (error) {
       setServerTestStatus((prev) => ({
         ...prev,
@@ -953,16 +955,13 @@ const UserCenter: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    const handleUserCenterLogin = async (
-      _event: Electron.IpcRendererEvent,
-      payload?: {
-        accessToken?: string | null
-        tokenType?: string | null
-        error?: string | null
-        state?: string | null
-      }
-    ): Promise<void> => {
+  const handleWebLoginPayload = useCallback(
+    async (payload?: {
+      accessToken?: string | null
+      tokenType?: string | null
+      error?: string | null
+      state?: string | null
+    }): Promise<void> => {
       if (!payload) return
       logDebug('deeplink received', {
         accessToken: maskToken(payload.accessToken),
@@ -1002,6 +1001,21 @@ const UserCenter: React.FC = () => {
           setLoading((prev) => ({ ...prev, userInfo: false }))
         }
       }
+    },
+    [completeLogin, getWebLoginState, logDebug, maskToken, resetWebLogin, t]
+  )
+
+  useEffect(() => {
+    const handleUserCenterLogin = (
+      _event: Electron.IpcRendererEvent,
+      payload?: {
+        accessToken?: string | null
+        tokenType?: string | null
+        error?: string | null
+        state?: string | null
+      }
+    ): void => {
+      void handleWebLoginPayload(payload)
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1010,7 +1024,24 @@ const UserCenter: React.FC = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.electron.ipcRenderer.removeListener('userCenterLogin', handleUserCenterLogin as any)
     }
-  }, [completeLogin, getWebLoginState, resetWebLogin, t])
+  }, [handleWebLoginPayload])
+
+  useEffect(() => {
+    const pendingRaw = localStorage.getItem(WEB_LOGIN_PENDING_KEY)
+    if (!pendingRaw) return
+    localStorage.removeItem(WEB_LOGIN_PENDING_KEY)
+    try {
+      const payload = JSON.parse(pendingRaw) as {
+        accessToken?: string | null
+        tokenType?: string | null
+        error?: string | null
+        state?: string | null
+      }
+      void handleWebLoginPayload(payload)
+    } catch {
+      // ignore invalid payload
+    }
+  }, [handleWebLoginPayload])
 
   useEffect(() => {
     return () => {
