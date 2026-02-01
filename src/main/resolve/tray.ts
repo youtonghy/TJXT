@@ -387,7 +387,7 @@ export async function createTray(): Promise<void> {
   if (process.platform === 'win32') {
     tray = new Tray(icoIcon)
   }
-  tray?.setToolTip('Clash Party')
+  tray?.setToolTip('TJXT')
   tray?.setIgnoreDoubleClickEvents(true)
 
   await updateTrayIcon()

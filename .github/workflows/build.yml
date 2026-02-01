@@ -32,7 +32,7 @@ jobs:
           npm_config_target_arch: ${{ matrix.arch }}
         run: |
           pnpm install
-          pnpm add @mihomo-party/sysproxy-win32-${{ matrix.arch }}-msvc
+          pnpm add @tjxt/sysproxy-win32-${{ matrix.arch }}-msvc
           pnpm prepare --${{ matrix.arch }}
       - name: Build
         env:
@@ -96,7 +96,7 @@ jobs:
           npm_config_target_arch: ${{ matrix.arch }}
         run: |
           pnpm install
-          pnpm add @mihomo-party/sysproxy-win32-${{ matrix.arch }}-msvc
+          pnpm add @tjxt/sysproxy-win32-${{ matrix.arch }}-msvc
           pnpm add -D electron@22.3.27
           (Get-Content electron-builder.yml) -replace 'windows', 'win7' | Set-Content electron-builder.yml
           pnpm prepare --${{ matrix.arch }}
@@ -162,8 +162,7 @@ jobs:
           npm_config_target_arch: ${{ matrix.arch }}
         run: |
           pnpm install
-          pnpm add @mihomo-party/sysproxy-linux-${{ matrix.arch }}-gnu
-          sed -i "s/productName: TJXT/productName: tjxt/" electron-builder.yml
+          pnpm add @tjxt/sysproxy-linux-${{ matrix.arch }}-gnu
           pnpm prepare --${{ matrix.arch }}
       - name: Build
         env:
@@ -221,7 +220,7 @@ jobs:
           npm_config_target_arch: ${{ matrix.arch }}
         run: |
           pnpm install
-          pnpm add @mihomo-party/sysproxy-darwin-${{ matrix.arch }}
+          pnpm add @tjxt/sysproxy-darwin-${{ matrix.arch }}
           pnpm prepare --${{ matrix.arch }}
       - name: Build
         env:
@@ -279,7 +278,7 @@ jobs:
           npm_config_target_arch: ${{ matrix.arch }}
         run: |
           pnpm install
-          pnpm add @mihomo-party/sysproxy-darwin-${{ matrix.arch }}
+          pnpm add @tjxt/sysproxy-darwin-${{ matrix.arch }}
           pnpm add -D electron@32.2.2
           pnpm prepare --${{ matrix.arch }}
       - name: Build

@@ -46,27 +46,16 @@ export function openFile(type: 'profile' | 'override', id: string, ext?: 'yaml' 
 }
 
 export async function openUWPTool(): Promise<void> {
-  const execPromise = promisify(exec)
   const execFilePromise = promisify(execFile)
   const uwpToolPath = path.join(resourcesDir(), 'files', 'enableLoopback.exe')
 
-  const { checkAdminPrivileges } = await import('../core/manager')
-  const isAdmin = await checkAdminPrivileges()
-
-  if (!isAdmin) {
-    const escapedPath = uwpToolPath.replace(/'/g, "''")
-    const command = `powershell -NoProfile -Command "Start-Process -FilePath '${escapedPath}' -Verb RunAs -Wait"`
-
-    await execPromise(command, { windowsHide: true })
-    return
-  }
   await execFilePromise(uwpToolPath)
 }
 
 export async function setupFirewall(): Promise<void> {
   const execPromise = promisify(exec)
   const removeCommand = `
-  $rules = @("mihomo", "mihomo-alpha", "Mihomo Party")
+  $rules = @("mihomo", "mihomo-alpha", "TJXT")
   foreach ($rule in $rules) {
     if (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue) {
       Remove-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue
@@ -76,7 +65,7 @@ export async function setupFirewall(): Promise<void> {
   const createCommand = `
   New-NetFirewallRule -DisplayName "mihomo" -Direction Inbound -Action Allow -Program "${mihomoCorePath('mihomo')}" -Enabled True -Profile Any -ErrorAction SilentlyContinue
   New-NetFirewallRule -DisplayName "mihomo-alpha" -Direction Inbound -Action Allow -Program "${mihomoCorePath('mihomo-alpha')}" -Enabled True -Profile Any -ErrorAction SilentlyContinue
-  New-NetFirewallRule -DisplayName "Mihomo Party" -Direction Inbound -Action Allow -Program "${exePath()}" -Enabled True -Profile Any -ErrorAction SilentlyContinue
+  New-NetFirewallRule -DisplayName "TJXT" -Direction Inbound -Action Allow -Program "${exePath()}" -Enabled True -Profile Any -ErrorAction SilentlyContinue
   `
 
   if (process.platform === 'win32') {

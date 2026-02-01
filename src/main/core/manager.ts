@@ -112,13 +112,13 @@ export const getMihomoIpcPath = (): string => {
     const processId = process.pid
 
     return isAdmin
-      ? `\\\\.\\pipe\\MihomoParty\\mihomo-admin-${sessionId}-${processId}`
-      : `\\\\.\\pipe\\MihomoParty\\mihomo-user-${sessionId}-${processId}`
+      ? `\\\\.\\pipe\\TJXT\\tjxt-admin-${sessionId}-${processId}`
+      : `\\\\.\\pipe\\TJXT\\tjxt-user-${sessionId}-${processId}`
   }
 
   const uid = process.getuid?.() || 'unknown'
   const processId = process.pid
-  return `/tmp/mihomo-party-${uid}-${processId}.sock`
+  return `/tmp/tjxt-${uid}-${processId}.sock`
 }
 
 // 核心配置接口

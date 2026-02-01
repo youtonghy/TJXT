@@ -2,21 +2,19 @@ import { copyFile, rm, writeFile } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import os from 'os'
-import { exec, execSync, spawn } from 'child_process'
-import { promisify } from 'util'
+import { execSync, spawn } from 'child_process'
 import { app, shell } from 'electron'
 import i18next from 'i18next'
 import { appLogger } from '../utils/logger'
 import { dataDir, exeDir, exePath, isPortable, resourcesFilesDir } from '../utils/dirs'
 import { getControledMihomoConfig } from '../config'
-import { checkAdminPrivileges } from '../core/manager'
 import { parse } from '../utils/yaml'
 import * as chromeRequest from '../utils/chromeRequest'
 
 export async function checkUpdate(): Promise<IAppVersion | undefined> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
   const res = await chromeRequest.get(
-    'https://github.com/mihomo-party-org/mihomo-party/releases/latest/download/latest.yml',
+    'https://github.com/youtonghy/TJXT/releases/latest/download/latest.yml',
     {
       headers: { 'Content-Type': 'application/octet-stream' },
       proxy: {
@@ -56,13 +54,13 @@ function compareVersions(a: string, b: string): number {
 
 export async function downloadAndInstallUpdate(version: string): Promise<void> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
-  const baseUrl = `https://github.com/mihomo-party-org/mihomo-party/releases/download/v${version}/`
+  const baseUrl = `https://github.com/youtonghy/TJXT/releases/download/v${version}/`
   const fileMap = {
-    'win32-x64': `clash-party-windows-${version}-x64-setup.exe`,
-    'win32-ia32': `clash-party-windows-${version}-ia32-setup.exe`,
-    'win32-arm64': `clash-party-windows-${version}-arm64-setup.exe`,
-    'darwin-x64': `clash-party-macos-${version}-x64.pkg`,
-    'darwin-arm64': `clash-party-macos-${version}-arm64.pkg`
+    'win32-x64': `TJXT-windows-${version}-x64-setup.exe`,
+    'win32-ia32': `TJXT-windows-${version}-ia32-setup.exe`,
+    'win32-arm64': `TJXT-windows-${version}-arm64-setup.exe`,
+    'darwin-x64': `TJXT-macos-${version}-x64.pkg`,
+    'darwin-arm64': `TJXT-macos-${version}-arm64.pkg`
   }
   let file = fileMap[`${process.platform}-${process.arch}`]
   if (isPortable()) {
@@ -100,29 +98,11 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
     if (file.endsWith('.exe')) {
       try {
         const installerPath = path.join(dataDir(), file)
-        const isAdmin = await checkAdminPrivileges()
-
-        if (isAdmin) {
-          await appLogger.info('Running installer with existing admin privileges')
-          spawn(installerPath, ['/S', '--force-run'], {
-            detached: true,
-            stdio: 'ignore'
-          }).unref()
-        } else {
-          // 提升权限安装
-          const escapedPath = installerPath.replace(/'/g, "''")
-          const args = ['/S', '--force-run']
-          const argsString = args.map((arg) => arg.replace(/'/g, "''")).join("', '")
-
-          const command = `powershell  -NoProfile -Command "Start-Process -FilePath '${escapedPath}' -ArgumentList '${argsString}' -Verb RunAs -WindowStyle Hidden"`
-
-          await appLogger.info('Starting installer with elevated privileges')
-
-          const execPromise = promisify(exec)
-          await execPromise(command, { windowsHide: true })
-
-          await appLogger.info('Installer started successfully with elevation')
-        }
+        await appLogger.info('Starting installer')
+        spawn(installerPath, ['/S', '--force-run'], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref()
       } catch (installerError) {
         await appLogger.error('Failed to start installer, trying fallback', installerError)
 
@@ -158,16 +138,7 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
       app.quit()
     }
     if (file.endsWith('.pkg')) {
-      try {
-        const execPromise = promisify(exec)
-        const shell = `installer -pkg ${path.join(dataDir(), file).replace(' ', '\\\\ ')} -target /`
-        const command = `do shell script "${shell}" with administrator privileges`
-        await execPromise(`osascript -e '${command}'`)
-        app.relaunch()
-        app.quit()
-      } catch {
-        shell.openPath(path.join(dataDir(), file))
-      }
+      await shell.openPath(path.join(dataDir(), file))
     }
   } catch (e) {
     rm(path.join(dataDir(), file))

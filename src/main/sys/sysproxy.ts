@@ -9,7 +9,7 @@ import { pacPort, startPacServer, stopPacServer } from '../resolve/server'
 import { proxyLogger } from '../utils/logger'
 
 let triggerSysProxyTimer: NodeJS.Timeout | null = null
-const helperSocketPath = '/tmp/mihomo-party-helper.sock'
+const helperSocketPath = '/tmp/net.tokisantike.tjxt.helper.sock'
 
 const defaultBypass: string[] = (() => {
   switch (process.platform) {
@@ -140,7 +140,7 @@ function isSocketFileExists(): boolean {
 async function isHelperRunning(): Promise<boolean> {
   try {
     const execPromise = promisify(exec)
-    const { stdout } = await execPromise('pgrep -f party.mihomo.helper')
+    const { stdout } = await execPromise('pgrep -f net.tokisantike.tjxt.helper')
     return stdout.trim().length > 0
   } catch {
     return false
@@ -149,7 +149,7 @@ async function isHelperRunning(): Promise<boolean> {
 
 async function startHelperService(): Promise<void> {
   const execPromise = promisify(exec)
-  const shell = `launchctl kickstart -k system/party.mihomo.helper`
+  const shell = `launchctl kickstart -k system/net.tokisantike.tjxt.helper`
   const command = `do shell script "${shell}" with administrator privileges`
   await execPromise(`osascript -e '${command}'`)
   await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -158,7 +158,7 @@ async function startHelperService(): Promise<void> {
 async function requestSocketRecreation(): Promise<void> {
   try {
     const execPromise = promisify(exec)
-    const shell = `pkill -USR1 -f party.mihomo.helper`
+    const shell = `pkill -USR1 -f net.tokisantike.tjxt.helper`
     const command = `do shell script "${shell}" with administrator privileges`
     await execPromise(`osascript -e '${command}'`)
     await new Promise((resolve) => setTimeout(resolve, 1000))

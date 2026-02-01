@@ -1,10 +1,10 @@
 [Desktop Entry]
 Name=TJXT
-Exec=mihomo-party %U
+Exec=tjxt %U
 Terminal=false
 Type=Application
-Icon=mihomo-party
-StartupWMClass=mihomo-party
+Icon=tjxt
+StartupWMClass=tjxt
 MimeType=x-scheme-handler/clash;x-scheme-handler/mihomo;
 Comment=TJXT
 Categories=Utility;

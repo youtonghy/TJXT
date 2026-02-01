@@ -47,11 +47,11 @@ const UpdaterModal: React.FC<Props> = (props) => {
           <Button
             color="primary"
             size="sm"
-            className="flex app-nodrag"
-            onPress={() => {
-              open(`https://github.com/mihomo-party-org/mihomo-party/releases/tag/v${version}`)
-            }}
-          >
+              className="flex app-nodrag"
+              onPress={() => {
+                open(`https://github.com/youtonghy/TJXT/releases/tag/v${version}`)
+              }}
+            >
             {t('common.updater.goToDownload')}
           </Button>
         </ModalHeader>

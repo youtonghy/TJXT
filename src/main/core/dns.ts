@@ -5,7 +5,7 @@ import axios from 'axios'
 import { getAppConfig, patchAppConfig } from '../config'
 
 const execPromise = promisify(exec)
-const helperSocketPath = '/tmp/mihomo-party-helper.sock'
+const helperSocketPath = '/tmp/net.tokisantike.tjxt.helper.sock'
 
 let setPublicDNSTimer: NodeJS.Timeout | null = null
 let recoverDNSTimer: NodeJS.Timeout | null = null

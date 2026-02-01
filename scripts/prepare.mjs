@@ -318,7 +318,7 @@ const resolveEnableLoopback = () =>
   })
 /* ======= sysproxy-rs ======= */
 const SYSPROXY_RS_VERSION = 'v0.1.0'
-const SYSPROXY_RS_URL_PREFIX = `https://github.com/mihomo-party-org/sysproxy-rs-opti/releases/download/${SYSPROXY_RS_VERSION}`
+const SYSPROXY_RS_URL_PREFIX = `https://github.com/youtonghy/TJXT-sysproxy-rs-opti/releases/download/${SYSPROXY_RS_VERSION}`
 
 function getSysproxyNodeName() {
   // 检测是否为 musl 系统（与 src/native/sysproxy/index.js 保持一致）
@@ -386,7 +386,7 @@ const resolveMonitor = async () => {
     fs.mkdirSync(tempDir, { recursive: true })
   }
   await downloadFile(
-    `https://github.com/mihomo-party-org/mihomo-party-run/releases/download/monitor/${arch}.zip`,
+    `https://github.com/youtonghy/TJXT-run/releases/download/monitor/${arch}.zip`,
     tempZip
   )
   const zip = new AdmZip(tempZip)
@@ -413,8 +413,8 @@ const resolveSubstore = () =>
   })
 const resolveHelper = () =>
   resolveResource({
-    file: 'party.mihomo.helper',
-    downloadURL: `https://github.com/mihomo-party-org/mihomo-party-helper/releases/download/${arch}/party.mihomo.helper`
+    file: 'net.tokisantike.tjxt.helper',
+    downloadURL: `https://github.com/youtonghy/TJXT-helper/releases/download/${arch}/net.tokisantike.tjxt.helper`
   })
 const resolveSubstoreFrontend = async () => {
   const tempDir = path.join(TEMP_DIR, 'substore-frontend')

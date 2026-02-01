@@ -152,7 +152,7 @@ const Override: React.FC = () => {
             isIconOnly
             className="app-nodrag"
             onPress={() => {
-              open('https://mihomo.party/docs/guide/override')
+              open('https://tjxt.tokisantike.net/docs/guide/override')
             }}
           >
             <HiOutlineDocumentText className="text-lg" />
@@ -164,7 +164,7 @@ const Override: React.FC = () => {
             variant="light"
             size="sm"
             onPress={() => {
-              open('https://github.com/mihomo-party-org/override-hub')
+              open('https://github.com/youtonghy/TJXT-override-hub')
             }}
           >
             <RiArchiveLine className="text-lg" />

@@ -7,8 +7,8 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-HELPER_PATH="/Library/PrivilegedHelperTools/party.mihomo.helper"
-LAUNCH_DAEMON="/Library/LaunchDaemons/party.mihomo.helper.plist"
+HELPER_PATH="/Library/PrivilegedHelperTools/net.tokisantike.tjxt.helper"
+LAUNCH_DAEMON="/Library/LaunchDaemons/net.tokisantike.tjxt.helper.plist"
 
 # 停止并卸载现有的 LaunchDaemon
 if [ -f "$LAUNCH_DAEMON" ]; then
@@ -20,9 +20,6 @@ fi
 rm -f "$HELPER_PATH"
 
 # 清理可能存在的旧版本文件
-rm -rf "/Applications/Clash Party.app"
-rm -rf "/Applications/Clash\\ Party.app"
-rm -rf "/Applications/Mihomo Party.app"
-rm -rf "/Applications/Mihomo\\ Party.app"
+rm -rf "/Applications/TJXT.app"
 
 exit 0

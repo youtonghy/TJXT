@@ -2,7 +2,7 @@
 set -e
 
 # 设置日志文件
-LOG_FILE="/tmp/mihomo-party-install.log"
+LOG_FILE="/tmp/tjxt-install.log"
 exec > "$LOG_FILE" 2>&1
 
 log() {
@@ -19,11 +19,11 @@ fi
 if [[ $2 == *".app" ]]; then
     APP_PATH="$2"
 else
-    APP_PATH="$2/Clash Party.app"
+    APP_PATH="$2/TJXT.app"
 fi
 
-HELPER_PATH="/Library/PrivilegedHelperTools/party.mihomo.helper"
-LAUNCH_DAEMON="/Library/LaunchDaemons/party.mihomo.helper.plist"
+HELPER_PATH="/Library/PrivilegedHelperTools/net.tokisantike.tjxt.helper"
+LAUNCH_DAEMON="/Library/LaunchDaemons/net.tokisantike.tjxt.helper.plist"
 
 log "Starting installation..."
 
@@ -61,13 +61,13 @@ fi
 
 # 复制 helper 工具
 log "Installing helper tool..."
-if [ -f "$APP_PATH/Contents/Resources/files/party.mihomo.helper" ]; then
-    cp -f "$APP_PATH/Contents/Resources/files/party.mihomo.helper" "$HELPER_PATH"
+if [ -f "$APP_PATH/Contents/Resources/files/net.tokisantike.tjxt.helper" ]; then
+    cp -f "$APP_PATH/Contents/Resources/files/net.tokisantike.tjxt.helper" "$HELPER_PATH"
     chown root:wheel "$HELPER_PATH"
     chmod 544 "$HELPER_PATH"
     log "Helper tool installed successfully"
 else
-    log "Error: Helper file not found at $APP_PATH/Contents/Resources/files/party.mihomo.helper"
+    log "Error: Helper file not found at $APP_PATH/Contents/Resources/files/net.tokisantike.tjxt.helper"
     exit 1
 fi
 
@@ -80,19 +80,19 @@ cat << EOF > "$LAUNCH_DAEMON"
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>party.mihomo.helper</string>
+    <string>net.tokisantike.tjxt.helper</string>
     <key>AssociatedBundleIdentifiers</key>
     <array>
-        <string>party.mihomo.app</string>
+        <string>net.tokisantike.tjxt</string>
     </array>
     <key>KeepAlive</key>
     <true/>
     <key>Program</key>
     <string>${HELPER_PATH}</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/party.mihomo.helper.err</string>
+    <string>/tmp/net.tokisantike.tjxt.helper.err</string>
     <key>StandardOutPath</key>
-    <string>/tmp/party.mihomo.helper.log</string>
+    <string>/tmp/net.tokisantike.tjxt.helper.log</string>
 </dict>
 </plist>
 EOF
@@ -126,7 +126,7 @@ macos_major=$(echo "$macos_version" | cut -d. -f1)
 log "macOS version: $macos_version"
 
 # 启用服务（防止安全软件禁用）
-if ! launchctl enable system/party.mihomo.helper 2>/dev/null; then
+if ! launchctl enable system/net.tokisantike.tjxt.helper 2>/dev/null; then
     log "Warning: Failed to enable service, continuing installation..."
 else
     log "Service enabled successfully"
@@ -159,7 +159,7 @@ fi
 # 验证服务状态
 log "Verifying service status..."
 sleep 2
-if launchctl list | grep -q "party.mihomo.helper"; then
+if launchctl list | grep -q "net.tokisantike.tjxt.helper"; then
     log "Service loaded successfully"
 else
     log "Warning: Service may not be running properly"
@@ -172,7 +172,7 @@ log "Fixing user data directory permissions..."
 for user_home in /Users/*; do
     if [ -d "$user_home" ] && [ "$(basename "$user_home")" != "Shared" ] && [ "$(basename "$user_home")" != ".localized" ]; then
         username=$(basename "$user_home")
-        user_data_dir="$user_home/Library/Application Support/mihomo-party"
+        user_data_dir="$user_home/Library/Application Support/TJXT"
 
         if [ -d "$user_data_dir" ]; then
             current_owner=$(stat -f "%Su" "$user_data_dir" 2>/dev/null || echo "unknown")

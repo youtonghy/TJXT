@@ -1,4 +1,4 @@
-appId: cilent.TJXT.app
+appId: net.tokisantike.tjxt
 productName: TJXT
 directories:
   buildResources: build
@@ -28,7 +28,7 @@ win:
     - nsis
     - 7z
   artifactName: ${name}-windows-${version}-${arch}-portable.${ext}
-  requestedExecutionLevel: requireAdministrator
+  requestedExecutionLevel: asInvoker
 nsis:
   artifactName: ${name}-windows-${version}-${arch}-setup.${ext}
   uninstallDisplayName: ${productName}

@@ -28,7 +28,7 @@ const Settings: React.FC = () => {
             title={t('settings.links.docs')}
             className="app-nodrag"
             onPress={() => {
-              window.open('https://mihomo.party')
+              window.open('https://tjxt.tokisantike.net')
             }}
           >
             <CgWebsite className="text-lg" />
@@ -40,7 +40,7 @@ const Settings: React.FC = () => {
             className="app-nodrag"
             title={t('settings.links.github')}
             onPress={() => {
-              window.open('https://github.com/mihomo-party-org/mihomo-party')
+              window.open('https://github.com/youtonghy/TJXT')
             }}
           >
             <IoLogoGithub className="text-lg" />
@@ -52,7 +52,7 @@ const Settings: React.FC = () => {
             className="app-nodrag"
             title={t('settings.links.telegram')}
             onPress={() => {
-              window.open('https://t.me/mihomo_party_group')
+              window.open('https://t.me/tjxt_group')
             }}
           >
             <FaTelegramPlane className="text-lg" />
