@@ -9,7 +9,7 @@ import { pacPort, startPacServer, stopPacServer } from '../resolve/server'
 import { proxyLogger } from '../utils/logger'
 
 let triggerSysProxyTimer: NodeJS.Timeout | null = null
-const helperSocketPath = '/tmp/net.tokisantike.tjxt.helper.sock'
+const helperSocketPath = '/tmp/mihomo-party-helper.sock'
 
 const defaultBypass: string[] = (() => {
   switch (process.platform) {
@@ -114,9 +114,7 @@ async function disableSysProxy(): Promise<void> {
   await stopPacServer()
 
   if (process.platform === 'darwin') {
-    await helperRequest(() =>
-      axios.get('http://localhost/off', { socketPath: helperSocketPath })
-    )
+    await helperRequest(() => axios.get('http://localhost/off', { socketPath: helperSocketPath }))
   } else {
     // Windows / Linux 直接使用 sysproxy-rs
     try {

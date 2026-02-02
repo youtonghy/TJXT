@@ -5,7 +5,7 @@ import axios from 'axios'
 import { getAppConfig, patchAppConfig } from '../config'
 
 const execPromise = promisify(exec)
-const helperSocketPath = '/tmp/net.tokisantike.tjxt.helper.sock'
+const helperSocketPath = '/tmp/mihomo-party-helper.sock'
 
 let setPublicDNSTimer: NodeJS.Timeout | null = null
 let recoverDNSTimer: NodeJS.Timeout | null = null
@@ -44,11 +44,7 @@ async function getOriginDNS(): Promise<void> {
 async function setDNS(dns: string): Promise<void> {
   const service = await getDefaultService()
   try {
-    await axios.post(
-      'http://localhost/dns',
-      { service, dns },
-      { socketPath: helperSocketPath }
-    )
+    await axios.post('http://localhost/dns', { service, dns }, { socketPath: helperSocketPath })
   } catch {
     // fallback to osascript if helper not available
     const shell = `networksetup -setdnsservers "${service}" ${dns}`

@@ -164,7 +164,7 @@ const Override: React.FC = () => {
             variant="light"
             size="sm"
             onPress={() => {
-              open('https://github.com/youtonghy/TJXT-override-hub')
+              open('https://github.com/mihomo-party-org/override-hub')
             }}
           >
             <RiArchiveLine className="text-lg" />
